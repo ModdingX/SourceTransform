@@ -1,0 +1,78 @@
+plugins {
+    id 'java'
+    id 'scala'
+    id 'application'
+    id 'maven-publish'
+}
+
+group = 'io.github.noeppi_noeppi.tools'
+
+repositories {
+    mavenCentral()
+    maven { url = 'https://maven.minecraftforge.net/' }
+}
+
+dependencies {
+    implementation 'org.scala-lang:scala-library:2.13.1'
+    implementation 'org.scala-lang.modules:scala-parser-combinators_2.13.0-RC3:1.1.2'
+    implementation 'org.apache.commons:commons-text:1.9'
+    implementation 'com.google.code.gson:gson:2.8.6'
+    implementation 'net.minecraftforge:srgutils:0.4.3'
+    implementation 'org.ow2.asm:asm:9.2'
+    implementation 'org.ow2.asm:asm-tree:9.2'
+    implementation 'net.sf.jopt-simple:jopt-simple:5.0.3'
+    implementation 'com.google.code.gson:gson:2.8.7'
+    implementation 'org.eclipse.jdt:org.eclipse.jdt.core:3.26.0'
+}
+
+application.mainClassName = 'io.github.noeppi_noeppi.tools.sourcetransform.Main'
+
+jar {
+    manifest {
+        attributes 'Main-Class': application.mainClassName
+    }
+}
+
+task fatjar(type: Jar) {
+    archiveClassifier = "fatjar"
+    manifest = jar.manifest
+    with jar
+}
+build.dependsOn fatjar
+
+task configureFatJar {
+    doLast {
+        configurations.compileClasspath.each { dep ->
+            fatjar.from(project.zipTree(dep)) {
+                exclude 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA'
+                duplicatesStrategy DuplicatesStrategy.INCLUDE
+            }
+        }
+    }
+}
+fatjar.dependsOn configureFatJar
+
+publishing {
+    publications {
+        mavenJava(MavenPublication) {
+            groupId = project.group
+            artifactId = project.name
+            version = project.version
+            artifact jar
+            artifact fatjar
+            pom {
+                licenses {
+                    license {
+                        name = "The Apache License, Version 2.0"
+                        url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                    }
+                }
+            }
+        }
+    }
+    repositories {
+        maven {
+            url '../MinecraftUtilities/maven'
+        }
+    }
+}
