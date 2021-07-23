@@ -18,7 +18,7 @@ class ConfiguredTransformer(private val transformer: Transformer, private val ta
             // Class has no name in source code, we won't rename it.
             None
           } else {
-            transformer.applyOn(className).map(transformed => packageName.map(_ + "/").getOrElse("") + enclosingName.map(_ + "$") + transformed)
+            transformer.applyOn(className).map(transformed => packageName.map(_ + "/").getOrElse("") + enclosingName.map(_ + "$").getOrElse("") + transformed)
           }
         case _ => transformer.applyOn(name)
       }
