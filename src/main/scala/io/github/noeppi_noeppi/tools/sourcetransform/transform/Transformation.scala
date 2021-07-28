@@ -74,7 +74,7 @@ class Transformation(private val inheritance: InheritanceMap, private val mappin
     Set.newBuilder.addAll(base).addAll(other).result()
   }
   
-  def build(): IMappingFile = {
+  def build(noparam: Boolean): IMappingFile = {
     val builder = IMappingBuilder.create("from", "to")
     val overrideMethods = mutable.Map[MethodInfo, String]()
     addMethodOverridesFromMappings(overrideMethods)
@@ -90,9 +90,9 @@ class Transformation(private val inheritance: InheritanceMap, private val mappin
     val fieldMap = fields.toMap.groupBy(_._1.cls)
     val methodMap = methods.toMap.groupBy(_._1.cls)
     val overrideMap = overrideMethods.toMap.groupBy(_._1.cls)
-    val paramMap = params.toMap.groupBy(_._1.method)
+    val paramMap = if (noparam) Map[MethodInfo, Map[ParamInfo, String]]() else params.toMap.groupBy(_._1.method)
     val paramMethodMap = paramMap.keySet.groupBy(_.cls)
-      allClasses.foreach(clsName => {
+    allClasses.foreach(clsName => {
       val cls = builder.addClass(clsName, classMap.getOrElse(clsName, clsName))
       fieldMap.getOrElse(clsName, Map()).foreach(field => {
         cls.field(field._1.name, field._2)
@@ -112,7 +112,9 @@ class Transformation(private val inheritance: InheritanceMap, private val mappin
           .map(name => (mid, name)) match {
           case Some(method) =>
             val m = cls.method(method._1.signature, method._1.name, method._2)
-            addParameters(m, paramMap.getOrElse(method._1, Map()))
+            if (!noparam) {
+              addParameters(m, paramMap.getOrElse(method._1, Map()))
+            }
           case None =>
         }
       })

@@ -3,12 +3,13 @@ package io.github.noeppi_noeppi.tools.sourcetransform.util.cls
 import org.objectweb.asm.ClassReader
 
 import java.nio.file.{FileSystem, FileSystems, Files, Path}
+import scala.jdk.CollectionConverters._
 import scala.jdk.StreamConverters._
 
 // Jars and JMods
 class JarLocator(path: Path) extends ClassIndex {
 
-  private val fs: FileSystem = FileSystems.newFileSystem(path, null)
+  private val fs: FileSystem = FileSystems.newFileSystem(path, null.asInstanceOf[ClassLoader])
   private val jmod: Boolean = path.getFileName.toString.endsWith(".jmod")
 
   override def allClasses: List[String] = {

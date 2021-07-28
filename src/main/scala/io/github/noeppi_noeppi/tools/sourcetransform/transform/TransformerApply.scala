@@ -19,6 +19,7 @@ object TransformerApply {
     val specMappings = options.acceptsAll(List("m", "mappings").asJava, "The mappings that will be applied").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output for additional mappings").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specRemap = options.acceptsAll(List("r", "remap").asJava, "Reverse-remap the transformer").availableIf(specTransformer, specMappings)
+    val specNoParam = options.acceptsAll(List("noparam").asJava, "Suppress param remapping")
     val set = try {
       options.parse(args: _*)
     } catch {
@@ -60,12 +61,12 @@ object TransformerApply {
         transformer
       }
       
-      val applied = apply(inheritance, mappedTransformer, mappings)
+      val applied = apply(inheritance, mappedTransformer, mappings, set.has(specNoParam))
       applied.write(set.valueOf(specOutput), IMappingFile.Format.TSRG2, false)
     }
   }
   
-  def apply(inheritance: InheritanceMap, transformers: List[ConfiguredTransformer], mappings: Option[IMappingFile]): IMappingFile = {
+  def apply(inheritance: InheritanceMap, transformers: List[ConfiguredTransformer], mappings: Option[IMappingFile], noparam: Boolean): IMappingFile = {
     val transformation = new Transformation(inheritance, mappings)
     
     val transform = TransformUtil.createTransformer(transformers) _
@@ -134,10 +135,12 @@ object TransformerApply {
       processMethod(m)
     })
     
-    inheritance.params.foreach(p => {
-      processParam(p)
-    })
+    if (!noparam) {
+      inheritance.params.foreach(p => {
+        processParam(p)
+      })
+    }
     
-    transformation.build()
+    transformation.build(noparam)
   }
 }
