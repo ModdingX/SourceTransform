@@ -13,6 +13,8 @@ class TreeLocator(thePath: Path) extends ClassIndex {
     Files.walk(path).toScala(List)
       .filter(p => Files.isRegularFile(p))
       .filter(p => p.getFileName.toString.endsWith(".class"))
+      .filter(p => p.getFileName.toString != "package-info.class")
+      .filter(p => p.getFileName.toString != "module-info.class")
       .map(p => p.toAbsolutePath.normalize())
       .map(p => path.relativize(p))
       .map(p => (0 until p.getNameCount).map(i => p.getName(i).toString.strip()).mkString("/"))
