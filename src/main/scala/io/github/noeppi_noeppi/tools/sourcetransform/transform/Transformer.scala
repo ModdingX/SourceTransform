@@ -39,7 +39,7 @@ object Transformer {
       }
     }
 
-    override def string(): String = "- " + str
+    override def string(): String = "-" + str
     override def remap(mappings: IMappingFile): this.type = this
   }
   
@@ -53,7 +53,7 @@ object Transformer {
       }
     }
 
-    override def string(): String = from + " -> " + to
+    override def string(): String = from + "->" + to
     override def remap(mappings: IMappingFile): this.type = this
   }
   
@@ -83,7 +83,7 @@ object Transformer {
       }
     }
 
-    override def string(): String = (if (toFront) "< " else "> ") + part
+    override def string(): String = (if (toFront) "<" else ">") + part
     override def remap(mappings: IMappingFile): this.type = this
   }
 }

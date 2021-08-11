@@ -8,7 +8,7 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
-class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map[MethodInfo, ParamSanitizer]) extends ClassTrackingVisitor {
+class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map[MethodInfo, ParamSanitizer], val quiet: Boolean) extends ClassTrackingVisitor {
   
   private var localClassLevel = 0
   private val imports = mutable.Set[String]()
@@ -73,10 +73,10 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
     if (!node.isStatic) {
       if (node.isOnDemand) {
         node.resolveBinding() match {
-          case null => System.err.println("Failed to resolve binding: " + node)
+          case null => warn("Failed to resolve binding: " + node)
           case b: IPackageBinding => SourceUtil.importedClassesFromPkg(inheritance, b.getName.replace('.', '/')).foreach(defineImport)
           case b: ITypeBinding if b.getBinaryName != null => SourceUtil.importedClassesFromCls(inheritance, b.getBinaryName.replace('.', '/')).foreach(defineImport)
-          case b => System.err.println("Failed to process import with binding: " + b)
+          case b => warn("Failed to process import with binding: " + b)
         }
       } else {
         defineImport(SourceUtil.simplePart(node.getName))
@@ -99,7 +99,7 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
     pushScope()
     node.parameters().asScala.foreach {
       case p: VariableDeclaration => defineName(p.getName.getIdentifier)
-      case p => System.err.println("Failed to process method parameter: " + p)
+      case p => warn("Failed to process method parameter: " + p)
     }
     true
   }
@@ -108,7 +108,7 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
     popScope()
     val info = SourceUtil.methodInfo(node.resolveBinding())
     if (info == null) {
-      System.err.println("Failed to resolve method binding: Skipping method: " + node.getName.getFullyQualifiedName + " (in " + currentClass() + ")")
+      warn("Failed to resolve method binding: Skipping method: " + node.getName.getFullyQualifiedName + " (in " + currentClass() + ")")
     } else {
       sanitizers.put(info, sanitizer)
     }
@@ -128,7 +128,7 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
     popLocalClass()
     val info = SourceUtil.methodInfo(node.resolveMethodBinding())
     if (info == null) {
-      System.err.println("Failed to resolve lambda binding: Skipping lambda (in " + currentClass() + ")")
+      warn("Failed to resolve lambda binding: Skipping lambda (in " + currentClass() + ")")
     } else {
       sanitizers.put(info, sanitizer)
     }
@@ -170,7 +170,7 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
       case _ =>
         node.resolveBinding() match {
           case null =>
-            System.err.println("Failed to resolve name binding: Skipping name " + node + " (in " + currentClass() + ")")
+            warn("Failed to resolve name binding: Skipping name " + node + " (in " + currentClass() + ")")
             defineName(node.getIdentifier)
           case b: IVariableBinding =>
             defineName(b.getName)
@@ -183,7 +183,7 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
   override def visit(node: QualifiedName): Boolean = {
     firstQualified(node).resolveBinding() match {
       case null =>
-        System.err.println("Failed to resolve qualified binding: Skipping name " + node + " (in " + currentClass() + ")")
+        warn("Failed to resolve qualified binding: Skipping name " + node + " (in " + currentClass() + ")")
         defineName(SourceUtil.simplePart(node))
       case b: IVariableBinding =>
         defineName(b.getName)
@@ -199,4 +199,6 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
       case q => q
     }
   }
+  
+  private def warn(msg: String): Unit = if (!quiet) System.err.println(msg)
 }

@@ -40,6 +40,7 @@ object ParchmentSanitizer {
     val specLevel = options.acceptsAll(List("l", "level").asJava, "Source level").withRequiredArg().withValuesConvertedBy(Util.enum[LanguageLevel]).defaultsTo(LanguageLevel.JAVA_16)
     val specInput = options.acceptsAll(List("m", "input").asJava, "Input for the parchment export to process.").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output for the sanitized parchment export.").withRequiredArg().withValuesConvertedBy(new PathConverter())
+    val specQuiet = options.acceptsAll(List("q", "quiet").asJava, "Suppress warning message while reading source code.").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val set = try {
       options.parse(args: _*)
     } catch {
@@ -78,7 +79,7 @@ object ParchmentSanitizer {
             val parser = createParser(file)
             parser.createAST(null) match {
               case cu: CompilationUnit =>
-                val visitor = new SourceVisitor(inheritance, currentMap)
+                val visitor = new SourceVisitor(inheritance, currentMap, set.has(specQuiet))
                 cu.accept(visitor)
                 visitor.checkEnd()
               case x => System.err.println("Parser returned invalid result for " + file + ": " + x.getClass + " " + x)

@@ -33,30 +33,65 @@ With `sourcetransform remap`, you can remap an inheritance map with a given mapp
 
 ## Apply a transformer
 
-SourceTransform can apply a transformer to a set of mappings using an inheritance map. This will create additional mappings. A transformer specifies rules on how to rename things. This was created to easily change names from MCP to official when updating forge mods to 1.17.
+SourceTransform can apply a transformer to a set of mappings using an inheritance map. This will create additional mappings. A transformer specifies rules on how to rename things. This was created to easily change names from MCP to official when updating forge mods to 1.17. SourceTransform will make sure that methods overriding other methods are renamed correctly.
 
 A transformer is a json object with two elements:
 
   * `api`: This should be `1`
   * `transformers` is a list of transformers to apply. Each name is checked against all of them and the first matching will be applied.
 
-A transformer is a json object that looks like this:
+A transformer is a json object with the following elements:
 
-*Documentation will follow*
+  * `transformer`: A transformer string. See below
+  * `type` or `types`: A type or a list of types that must match an element. For classes, it must match the class type. For members or parameters and variables it must match their descriptor (or one of the types from their descriptor). Declaring primitives here, will implicitly declare their wrapper types.
+  * `targets`: A list of targets to apply the transformer to. These are `child_class`, `utility_class`, `field`, `method`, `parameter` and `local`. `child_class` precedes over `utility_class` and will match if the class is a subtype of one of the types from `type`/`types`. `utility_class` will match when a majority of members matches the types from `type`/`types`.
+  * `member` or `members`: A member definition or a list of member definitions that must match the old name. There are two types of member definitions. Fields and Method member definitions. A field member definition is just a simple name. A method member definition is a simple name followed by a hash (`#`) and optionally an integer for the amount of parameters.
+  * `exact_type`: A boolean that, when set, will make the elements types only match exactly to the ones declared in `type`/`types` instead of matching for subtypes.
+
+A transformer string can be one of these:
+
+  * `old->new`: Replace `old` with `new`
+  * `-str`: Remove `str` from the name. Use this instead of `str->` as the latter might produce weird results regarding case.
+  * `>str`: If the name contains `str`, move it to the end of the name.
+  * `<str`: If the name contains `str`, move it to the start of the name.
+
+The names in the transformer string should use lower snake case. They are changed to the matching case when the transformer is applied.
+
+`sourcetransform transform` accepts the following arguments:
+
+  * `-i`, `--inheritance`: The inheritance map to use.
+  * `-m`, `--mappings`: The mappings that will be applied to the source code. Required if `--transformer` is not set.
+  * `--noparam`: When this is set, parameters won't be transformed.
+  * `-o`, `--output`: Output file for additional mappings.
+  * `-r`, `--remap`: Reverse-remap the transformer. This should be set, if the transformer uses the target names instead of the source names.
+  * `-t`, `--transformer`: The transformer that will be applied on the source code. Required if `--mappings` is not set.
 
 ## Create renames for local variables
 
-*Documentation will follow*
+With `sourcetransform local` you can create a replacement map for local variables using a transformer. This stores position, length and replacement for each occurrence of locals. It accepts the following arguments:
+
+  * `-i`, `--inheritance`: The inheritance map to use.
+  * `-l`, `--level`: Java source level of the source code. One of `java_8`, `java_10` or `java_16`. Defaults to `java_16`.
+  * `-m`, `--mappings`: The mappings that will be applied to the source code. Required if `--transformer` is not set.
+  * `-o`, `--output`: Output file for the local rename map.
+  * `-p`, `--classpath`: classpath required to compile the source code. **This must also include the jars / jmods for the java platform libraries**
+  * `-r`, `--remap`: Reverse-remap the transformer. This should be set, if the transformer uses the target names instead of the source names.
+  * `-s`, `--sources`: The folder that contains the java source files to process.
+  * `-t`, `--transformer`: The transformer that will be applied on the source code. Required if `--mappings` is not set.
 
 ## Apply renames for local variables
 
-*Documentation will follow*
+Using `sourcetransform apply` you can appyl a local rename map to source code. You can also apply the local rename map to comments in the source code. This is useful to then run Srg2Source over it and apply the replacements afterwards. You can't just apply the local rename map after running Srg2Source as the indices in source code will have changed.
 
-## Stage renames for local variables as comments
+  * `-c`, `--comments`: Add comments instead of applying the local rename map.
+  * `-r`, `--rename`: The local rename map to apply.
+  * `-s`, `--sources`: The folder that contains the java source files to process.
 
-This exists so you can run Srg2Source before applying the local renames as it would otherwise.
+## Apply local renames previously staged as comments
 
-*Documentation will follow*
+Using `sourcetransform comments` you can apply local rename comments previously added with `sourcetransform apply`.
+
+  * `-s`, `--sources`: The folder that contains the java source files to process.
 
 ## Sanitize a parchment export to be usable with some source code
 
@@ -70,3 +105,4 @@ For this it needs a parchment export json, an inheritance map and the compile cl
   * `-o`, `--output`: Where to write the new sanitized export json.
   * `-p`, `--classpath`: classpath required to compile the source code. **This must also include the jars / jmods for the java platform libraries**
   * `-s`, `--sources`: The folder that contains the java source files to process.
+  * `-q`, `--quiet`: Suppress warning messages when reading the source code.
