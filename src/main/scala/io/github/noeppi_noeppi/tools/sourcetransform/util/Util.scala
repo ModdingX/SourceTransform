@@ -1,6 +1,7 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.util
 
 import com.google.gson.{Gson, GsonBuilder}
+import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, MethodInfo}
 import joptsimple.util.EnumConverter
 
 import java.util
@@ -11,6 +12,12 @@ import scala.util.matching.Regex
 object Util {
 
   val CLS_TYPE: Regex = "L([^;]+);".r
+  
+  // Extract param list from msig
+  val MSIG_PARAMS: Regex = "\\(((?:\\[*(?:[ZBCSIJFD]|L[^;]+;))*)\\)\\[*(?:[ZBCSIJFD]|L[^;]+;)".r
+  
+  // Extract array from simplified msig (object refs replaced with L)
+  val MSIG_SIMPLIFIED_ARR: Regex = "\\[+[ZBCSIJFDL]+".r
 
   val GSON: Gson = {
     val builder = new GsonBuilder
@@ -49,6 +56,11 @@ object Util {
       case _: IndexOutOfBoundsException => "V"
       case _: NoSuchElementException => "V"
     }
+  }
+  
+  def simplifiedSignatureParams(sig: String): String = sig match {
+    case MSIG_PARAMS(params) => MSIG_SIMPLIFIED_ARR.replaceAllIn(CLS_TYPE.replaceAllIn(params, "L"), "[")
+    case _ => ""
   }
 
   def enum[T <: Enum[T] : ClassTag]: EnumConverter[T] = new ConcreteEnumConverter(classTag[T].runtimeClass.asInstanceOf[Class[T]])

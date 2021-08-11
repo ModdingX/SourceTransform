@@ -61,13 +61,13 @@ object InheritanceBuilder {
     data.accept(new ClassVisitor(Opcodes.ASM9) {
       
       override def visitField(access: Int, name: String, descriptor: String, signature: String, value: Any): FieldVisitor = {
-        builder.field(cls, name, descriptor)
+        builder.field(cls, name, descriptor, (access & Opcodes.ACC_STATIC) != 0)
         addSignatureInheritance(failer, descriptor, builder, classpath)
         null
       }
       
       override def visitMethod(access: Int, name: String, descriptor: String, signature: String, exceptions: Array[String]): MethodVisitor = {
-        builder.method(cls, name, descriptor)
+        builder.method(cls, name, descriptor, (access & Opcodes.ACC_STATIC) != 0)
         addSignatureInheritance(failer, descriptor, builder, classpath)
         val visitor: MethodVisitor = if ((access & Opcodes.ACC_PRIVATE) == 0) {
           overridableMethods.addOne((name, descriptor))
@@ -118,7 +118,12 @@ object InheritanceBuilder {
             ParamIndexMapper.translateLocalIdx(local, synthetics, descriptor) match {
               case Some(idx) if !visited.contains(idx) =>
                 visited.addOne(idx)
-                builder.param(cls, name, descriptor, idx, paramName)
+                val cleanedParameter = if (paramName.nonEmpty && Character.isJavaIdentifierStart(paramName.head) && paramName.tail.forall(Character.isJavaIdentifierPart)) {
+                  paramName
+                } else {
+                  "o" + idx
+                }
+                builder.param(cls, name, descriptor, idx, cleanedParameter)
               case _ =>
             }
           }

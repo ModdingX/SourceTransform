@@ -2,21 +2,15 @@ package io.github.noeppi_noeppi.tools.sourcetransform.local
 
 import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.InheritanceMap
 import io.github.noeppi_noeppi.tools.sourcetransform.transform.{ConfiguredTransformer, TransformTarget, TransformUtil}
-import io.github.noeppi_noeppi.tools.sourcetransform.util.SourceUtil
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassTrackingVisitor, SourceUtil}
 import org.eclipse.jdt.core.dom._
 
 import scala.collection.mutable
 
-class SourceVisitor(private val inheritance: InheritanceMap, transformers: List[ConfiguredTransformer], renames: mutable.Set[(Int, Int, String)]) extends ASTVisitor {
+class SourceVisitor(private val inheritance: InheritanceMap, transformers: List[ConfiguredTransformer], renames: mutable.Set[(Int, Int, String)]) extends ClassTrackingVisitor {
   
-  private val outerClassElems = mutable.Stack[String]()
-  private val innerClassElems = mutable.Stack[String]()
-  // Not perfect but it hopefully works in most cases
-  private var anonymousIndex = 1
   private val methodStack = mutable.Stack[(String, String)]()
   private val params = mutable.Map[String, String]()
-
-  private def currentClass() = outerClassElems.reverse.mkString("/") + innerClassElems.reverse.map("$" + _).mkString("")
   
   private val transform = TransformUtil.createTransformer(transformers) _
 
@@ -49,59 +43,6 @@ class SourceVisitor(private val inheritance: InheritanceMap, transformers: List[
           case None => params.put(key, name); name
         }
     }
-  }
-
-
-  override def visit(node: CompilationUnit): Boolean = {
-    outerClassElems.clear()
-    outerClassElems.addAll(node.getPackage.getName.getFullyQualifiedName.split("\\.").reverse)
-    innerClassElems.clear()
-    anonymousIndex = 1
-    true
-  }
-  
-  override def endVisit(node: CompilationUnit): Unit = {
-    outerClassElems.clear()
-    innerClassElems.clear()
-    anonymousIndex = 1
-    params.clear()
-  }
-  
-  override def visit(node: TypeDeclaration): Boolean = startType(node)
-  override def endVisit(node: TypeDeclaration): Unit = endType(node)
-  override def visit(node: AnnotationTypeDeclaration): Boolean = startType(node)
-  override def endVisit(node: AnnotationTypeDeclaration): Unit = endType(node)
-  override def visit(node: EnumDeclaration): Boolean = startType(node)
-  override def endVisit(node: EnumDeclaration): Unit = endType(node)
-  
-  private def startType(node: AbstractTypeDeclaration): Boolean = {
-    if (node.isMemberTypeDeclaration) {
-      innerClassElems.push(node.getName.getIdentifier)
-    } else {
-      outerClassElems.push(node.getName.getIdentifier)
-      innerClassElems.clear()
-      anonymousIndex = 1
-    }
-    true
-  }
-  
-  private def endType(node: AbstractTypeDeclaration): Unit = {
-    if (node.isMemberTypeDeclaration) {
-      innerClassElems.pop()
-    } else {
-      outerClassElems.pop()
-      anonymousIndex = 1
-    }
-  }
-
-  override def visit(node: AnonymousClassDeclaration): Boolean = {
-    innerClassElems.push("$" + anonymousIndex)
-    anonymousIndex += 1
-    true
-  }
-
-  override def endVisit(node: AnonymousClassDeclaration): Unit = {
-    innerClassElems.pop()
   }
 
   override def visit(node: MethodDeclaration): Boolean = {

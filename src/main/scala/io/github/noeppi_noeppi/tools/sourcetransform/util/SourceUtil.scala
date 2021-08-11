@@ -1,10 +1,12 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.util
 
-import org.eclipse.jdt.core.dom.{ASTParser, SingleVariableDeclaration}
+import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, MethodInfo}
+import org.eclipse.jdt.core.dom.{ASTParser, IMethodBinding, ModuleQualifiedName, Name, QualifiedName, SimpleName, SingleVariableDeclaration}
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
+import scala.annotation.tailrec
 import scala.jdk.StreamConverters._
 
 object SourceUtil {
@@ -45,5 +47,43 @@ object SourceUtil {
     } else {
       binary.takeWhile(_ == '[') + "L" + binary.dropWhile(_ == '[').replace('.', '/') + ";"
     }
+  }
+  
+  @tailrec
+  def simplePart(name: Name): String = name match {
+    case n: SimpleName => n.getIdentifier
+    case n: QualifiedName => n.getName.getIdentifier
+    case n: ModuleQualifiedName => simplePart(n.getName)
+    case n =>
+      val fqn = n.getFullyQualifiedName
+      if (fqn.contains(".")) {
+        fqn.substring(fqn.indexOf('.') + 1)
+      } else {
+        fqn
+      }
+  }
+  
+  def importedClassesFromPkg(inheritance: InheritanceMap, pkg: String): Set[String] = {
+    inheritance.getClasses(pkg).map(_.substring(pkg.length)).filter(!_.contains("$"))
+  }
+  
+  def importedClassesFromCls(inheritance: InheritanceMap, cls: String): Set[String] = {
+    val pkg = if (cls.contains("/")) cls.substring(0, cls.lastIndexOf('/')) else ""
+    inheritance.getClasses(pkg).filter(_.startsWith(cls + "$")).map(_.substring(cls.length + 1))
+      .filter(!_.contains("$")).filter(_.toIntOption.isEmpty)
+  }
+  
+  def methodInfo(binding: IMethodBinding): MethodInfo = {
+    if (binding == null) return null
+    val cls = binding.getDeclaringClass
+    if (cls == null) return null
+    if (cls.getBinaryName == null) return null
+    if (binding.getReturnType.getBinaryName == null) return null
+    if (binding.getParameterTypes.exists(str => str.getBinaryName == null)) return null
+    
+    val name = if (binding.isConstructor) "<init>" else binding.getName
+    val ret = if (binding.isConstructor) "V" else SourceUtil.internal(binding.getReturnType.getBinaryName)
+    val desc = "(" + binding.getParameterTypes.map(str => SourceUtil.internal(str.getBinaryName)).mkString("") + ")" + ret
+    MethodInfo(cls.getBinaryName.replace('.', '/'), name, desc)
   }
 }
