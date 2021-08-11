@@ -56,6 +56,11 @@ task configureFatJar {
 }
 fatjar.dependsOn configureFatJar
 
+task sourcesJar(type: Jar, dependsOn: classes) {
+    classifier 'sources'
+    from sourceSets.main.allSource
+}
+
 publishing {
     publications {
         mavenJava(MavenPublication) {
@@ -64,6 +69,7 @@ publishing {
             version = project.version
             artifact jar
             artifact fatjar
+            artifact sourcesJar
             pom {
                 licenses {
                     license {
