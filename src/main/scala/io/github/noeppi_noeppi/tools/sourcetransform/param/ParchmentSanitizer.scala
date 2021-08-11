@@ -40,7 +40,7 @@ object ParchmentSanitizer {
     val specLevel = options.acceptsAll(List("l", "level").asJava, "Source level").withRequiredArg().withValuesConvertedBy(Util.enum[LanguageLevel]).defaultsTo(LanguageLevel.JAVA_16)
     val specInput = options.acceptsAll(List("m", "input").asJava, "Input for the parchment export to process.").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output for the sanitized parchment export.").withRequiredArg().withValuesConvertedBy(new PathConverter())
-    val specQuiet = options.acceptsAll(List("q", "quiet").asJava, "Suppress warning message while reading source code.").withRequiredArg().withValuesConvertedBy(new PathConverter())
+    val specQuiet = options.acceptsAll(List("q", "quiet").asJava, "Suppress warning message while reading source code.")
     val set = try {
       options.parse(args: _*)
     } catch {
