@@ -200,5 +200,5 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
     }
   }
   
-  private def warn(msg: String): Unit = if (!quiet) System.err.println(msg)
+  private def warn(msg: String): Unit = if (!quiet) System.out.println(msg)
 }

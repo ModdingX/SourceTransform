@@ -25,6 +25,7 @@ object InheritanceRemapper {
       if (!set.has(specMappings)) System.out.println("Missing required option: " + specMappings)
       if (!set.has(specOutput)) System.out.println("Missing required option: " + specOutput)
       options.printHelpOn(System.out)
+      System.exit(1)
     } else {
       val inheritanceReader = Files.newBufferedReader(set.valueOf(specInput))
       val inheritance = InheritanceMap.read(inheritanceReader)

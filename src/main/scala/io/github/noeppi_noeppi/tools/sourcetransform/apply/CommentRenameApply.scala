@@ -25,6 +25,7 @@ object CommentRenameApply {
     if (!set.has(specInput)) {
       if (!set.has(specInput)) System.out.println("Missing required option: " + specInput)
       options.printHelpOn(System.out)
+      System.exit(1)
     } else {
       val base = set.valueOf(specInput).toAbsolutePath.normalize()
       val files = Files.walk(base).toScala(List)

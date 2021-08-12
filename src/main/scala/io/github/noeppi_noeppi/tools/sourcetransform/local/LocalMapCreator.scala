@@ -37,6 +37,7 @@ object LocalMapCreator {
       if (!set.has(specTransformer)) System.out.println("Missing required option: " + specTransformer)
       if (!set.has(specOutput)) System.out.println("Missing required option: " + specOutput)
       options.printHelpOn(System.out)
+      System.exit(1)
     } else {
       val inheritanceReader = Files.newBufferedReader(set.valueOf(specInheritance))
       val inheritance = InheritanceMap.read(inheritanceReader)

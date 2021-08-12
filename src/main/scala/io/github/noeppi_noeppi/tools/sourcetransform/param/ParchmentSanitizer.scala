@@ -41,6 +41,7 @@ object ParchmentSanitizer {
     val specInput = options.acceptsAll(List("m", "input").asJava, "Input for the parchment export to process.").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output for the sanitized parchment export.").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specQuiet = options.acceptsAll(List("q", "quiet").asJava, "Suppress warning message while reading source code.")
+    val specIgnore = options.acceptsAll(List("b", "ignore").asJava, "Packages to ignore (with all subpackages).").withRequiredArg().withValuesSeparatedBy(',')
     val set = try {
       options.parse(args: _*)
     } catch {
@@ -52,13 +53,16 @@ object ParchmentSanitizer {
       if (!set.has(specInput)) System.out.println("Missing required option: " + specInput)
       if (!set.has(specOutput)) System.out.println("Missing required option: " + specOutput)
       options.printHelpOn(System.out)
+      System.exit(1)
     } else {
       val inheritanceReader = Files.newBufferedReader(set.valueOf(specInheritance))
       val inheritance = InheritanceMap.read(inheritanceReader)
       inheritanceReader.close()
-      
+
+      val ignored = set.valuesOf(specIgnore).asScala.map(_.replace('.', '/')).toSet
+
       val base = set.valueOf(specSources).toAbsolutePath.normalize()
-      val files = SourceUtil.getJavaSources(base)
+      val files = SourceUtil.getJavaSources(base).filter(f => !ignored.exists(f.startsWith))
       val createParser = SourceUtil.createParserFactory(set.valueOf(specLevel), base, set.valuesOf(specClasspath).asScala.toSeq) _
       
       val executor = new ScheduledThreadPoolExecutor(1 max (Runtime.getRuntime.availableProcessors() - 1), (action: Runnable) => {
@@ -76,13 +80,17 @@ object ParchmentSanitizer {
         futures.addOne(executor.submit(new Runnable {
           override def run(): Unit = {
             val currentMap = mutable.Map[MethodInfo, ParamSanitizer]()
-            val parser = createParser(file)
-            parser.createAST(null) match {
-              case cu: CompilationUnit =>
-                val visitor = new SourceVisitor(inheritance, currentMap, set.has(specQuiet))
-                cu.accept(visitor)
-                visitor.checkEnd()
-              case x => System.err.println("Parser returned invalid result for " + file + ": " + x.getClass + " " + x)
+            try {
+              val parser = createParser(file)
+              parser.createAST(null) match {
+                case cu: CompilationUnit =>
+                  val visitor = new SourceVisitor(inheritance, currentMap, set.has(specQuiet))
+                  cu.accept(visitor)
+                  visitor.checkEnd()
+                case x => System.err.println("Parser returned invalid result for " + file + ": " + x.getClass + " " + x)
+              }
+            } catch {
+              case e: Exception => throw new IllegalStateException("Failed to process class: " + file, e)
             }
             lock.synchronized {
               mapBuilder.addAll(currentMap)
@@ -90,7 +98,7 @@ object ParchmentSanitizer {
               if (completed % sourceFilesBetweenNotify == 0) {
                 val percentage = Math.round(100 * (completed / files.size.toDouble))
                 if (percentage < 100) {
-                  System.out.println(s"$percentage% ($completed / ${files.size})")
+                  System.err.println(s"$percentage% ($completed / ${files.size})")
                 }
               }
             }
@@ -99,7 +107,7 @@ object ParchmentSanitizer {
       })
       futures.foreach(_.get())
       executor.shutdownNow()
-      System.out.println(s"100% (${files.size} / ${files.size})")
+      System.err.println(s"100% (${files.size} / ${files.size})")
       val map = mapBuilder.toMap
       
       val inputReader = Files.newBufferedReader(set.valueOf(specInput))
@@ -115,7 +123,7 @@ object ParchmentSanitizer {
         cls.getFields.forEach(fd => cb.createField(fd.getName, fd.getDescriptor).addJavadoc(fd.getJavadoc))
         cls.getMethods.forEach(md => {
           val info = MethodInfo(cls.getName, md.getName, md.getDescriptor)
-          val mapper = map.getOrElse(info, ParamSanitizer.queryDefault(info))
+          val mapper = map.getOrElse(info, ParamSanitizer.queryDefault(info, set.has(specQuiet)))
           // Skip lambdas if they were skipped on source code processing
           if (!md.getName.startsWith("lambda$") || mapper != ParamSanitizer.DEFAULT) {
             val mb = cb.createMethod(md.getName, md.getDescriptor).addJavadoc(md.getJavadoc)

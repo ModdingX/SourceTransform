@@ -22,8 +22,8 @@ object ParamSanitizer {
   
   val DEFAULT = new ParamSanitizer(null, 0)
   
-  def queryDefault(info: MethodInfo): ParamSanitizer = {
-    System.err.println("Using default sanitizer for method " + info.cls + " " + info.name + info.signature + " Is it missing in the source code?")
+  def queryDefault(info: MethodInfo, quiet: Boolean): ParamSanitizer = {
+    if (!quiet) System.err.println("Using default sanitizer for method " + info.cls + " " + info.name + info.signature + " Is it missing in the source code?")
     DEFAULT
   }
 }

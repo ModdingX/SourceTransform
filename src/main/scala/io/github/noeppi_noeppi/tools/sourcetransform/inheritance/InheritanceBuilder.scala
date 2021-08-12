@@ -30,6 +30,7 @@ object InheritanceBuilder {
       if (!set.has(specClasses)) System.out.println("Missing required option: " + specClasses)
       if (!set.has(specOutput)) System.out.println("Missing required option: " + specOutput)
       options.printHelpOn(System.out)
+      System.exit(1)
     } else {
       val classIndex = new TreeLocator(set.valueOf(specClasses))
       val library = new CompoundLocator(Option(set.valuesOf(specClasspath)).map(_.asScala).getOrElse(Nil).map(p => new JarLocator(p)).toSeq: _*)

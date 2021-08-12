@@ -29,8 +29,10 @@ object TransformerApply {
       if (!set.has(specInheritance)) System.out.println("Missing required option: " + specInheritance)
       if (!set.has(specOutput)) System.out.println("Missing required option: " + specOutput)
       options.printHelpOn(System.out)
+      System.exit(1)
     } else if (!set.has(specTransformer) && !set.has(specMappings)) {
       println("Cannot run with neither mappings nor transformer given.")
+      System.exit(1)
     } else {
       val inheritanceReader = Files.newBufferedReader(set.valueOf(specInheritance))
       val inheritance = InheritanceMap.read(inheritanceReader)

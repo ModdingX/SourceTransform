@@ -25,6 +25,7 @@ object RenameApply {
       if (!set.has(specInput)) System.out.println("Missing required option: " + specInput)
       if (!set.has(specRename)) System.out.println("Missing required option: " + specRename)
       options.printHelpOn(System.out)
+      System.exit(1)
     } else {
       val renameReader = Files.newBufferedReader(set.valueOf(specRename))
       val renames = RenameMap.read(renameReader)

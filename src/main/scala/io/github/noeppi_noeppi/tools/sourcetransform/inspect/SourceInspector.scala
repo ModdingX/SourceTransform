@@ -33,6 +33,7 @@ object SourceInspector {
       if (!set.has(specInspections)) System.out.println("Missing required option: " + specInspections)
       if (!set.has(specOutput)) System.out.println("Missing required option: " + specOutput)
       options.printHelpOn(System.out)
+      System.exit(1)
     } else {
       val inheritanceReader = Files.newBufferedReader(set.valueOf(specInheritance))
       val inheritance = InheritanceMap.read(inheritanceReader)
