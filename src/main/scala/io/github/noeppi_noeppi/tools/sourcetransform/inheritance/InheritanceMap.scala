@@ -13,7 +13,8 @@ class InheritanceMap private (
                                private val fieldsExtended: Map[FieldInfo, Boolean],
                                private val methodsExtended: Map[MethodInfo, Boolean],
                                val params: Set[ParamInfo],
-                               private val overrides: Map[MethodInfo, Set[MethodInfo]]
+                               private val overrides: Map[MethodInfo, Set[MethodInfo]],
+                               private val lambdas: Map[LambdaInfo, LambdaImplInfo]
                              ) {
   
   val fields: Set[FieldInfo] = fieldsExtended.keySet
@@ -31,6 +32,8 @@ class InheritanceMap private (
   private lazy val overridesReverse: Map[MethodInfo, Set[MethodInfo]] = overrides.toSet.flatMap((e: (MethodInfo, Set[MethodInfo])) => e._2.map(x => (e._1, x)))
     .map(_.swap).groupBy(_._1).map(e => (e._1, e._2.map(_._2)))
 
+  private lazy val lambdaImplMap: Map[MethodInfo, Set[LambdaInfo]] = lambdas.groupBy(_._2.implementation).map(e => (e._1, e._2.keySet))
+  
   def isSubType(typeElem: String, parent: String): Boolean = {
     if (typeElem.startsWith("[") && parent.startsWith("[")) {
       isSubType(typeElem.substring(1), parent.substring(1))
@@ -88,6 +91,9 @@ class InheritanceMap private (
   
   def getOverriding(m: MethodInfo): Set[MethodInfo] = overridesReverse.getOrElse(m, Set())
   
+  // Get all lambdas, a method servers a implementation
+  def getLambdasFor(impl: MethodInfo): Set[LambdaInfo] = lambdaImplMap.getOrElse(impl, Set())
+  
   def isStatic(f: FieldInfo): Boolean = fieldsExtended.getOrElse(f, false)
   
   def isStatic(m: MethodInfo): Boolean = methodsExtended.getOrElse(m, false)
@@ -140,7 +146,8 @@ class InheritanceMap private (
     fieldsExtended.map(f => (f._1.remap(mappings), f._2)),
     methodsExtended.map(m => (m._1.remap(mappings), m._2)),
     params.map(p => p.remap(mappings)),
-    overrides.map(e => (e._1.remap(mappings), e._2.map(m => m.remap(mappings))))
+    overrides.map(e => (e._1.remap(mappings), e._2.map(m => m.remap(mappings)))),
+    lambdas.map(e => (e._1.remap(mappings), e._2.remap(mappings)))
   )
   
   def write(w: Writer): Unit = {
@@ -161,6 +168,9 @@ class InheritanceMap private (
         w.write("override " + e._1.cls + " " + e._1.name + " " + e._1.signature + " from " + m.cls + " " + m.name + " " + m.signature + "\n")
       })
     })
+    this.lambdas.toList.sortBy(_._1)(InheritanceMap.LambdaOrdering).foreach(e => {
+      w.write("lambda " + e._1.cls + " " + e._1.lambdaId + " with " + e._2.implementation.cls + " " + e._2.implementation.name + " " + e._2.implementation.signature + " implements " + e._2.implementedCls + "\n")
+    })
   }
 }
 
@@ -173,6 +183,15 @@ object InheritanceMap {
   private implicit val ExtendedFieldOrdering: Ordering[(FieldInfo, Boolean)] = Ordering.by(f => (!f._2, f._1.cls, f._1.name))
   private implicit val ExtendedMethodOrdering: Ordering[(MethodInfo, Boolean)] = Ordering.by(m => (!m._2, m._1.cls, m._1.name, m._1.signature))
   private implicit val ParamOrdering: Ordering[ParamInfo] = Ordering.by(p => (p.method, p.idx))
+  private implicit val LambdaOrdering: Ordering[LambdaInfo] = Ordering.by(p => (p.cls, orderLambdaId(p.lambdaId)))
+  
+  private def orderLambdaId(lambdaId: String): (String, Int) = {
+    if (!lambdaId.contains("$")) return (lambdaId, -1)
+    lambdaId.substring(lambdaId.lastIndexOf('$') + 1).toIntOption match {
+      case Some(id) => (lambdaId.substring(0, lambdaId.lastIndexOf('$')), id)
+      case None => (lambdaId, -1)
+    }
+  }
   
   def read(r: BufferedReader): InheritanceMap = {
     val builder = new Builder
@@ -184,7 +203,7 @@ object InheritanceMap {
     
     type X = Builder => Unit
     
-    def line: Parser[X] = class_line | field_line | method_line | param_line | override_line | failure("Inheritance Map line expected.")
+    def line: Parser[X] = class_line | field_line | method_line | param_line | override_line | lambda_line | failure("Inheritance Map line expected.")
     
     def class_line: Parser[X] = opt("source") ~ "class" ~ class_entry ~ "extends" ~ class_entry ~ opt(interfaces) ^^ { case source ~ _ ~ cls ~ _ ~ parent ~ interfaces => builder => builder.cls(cls, Some(parent), interfaces.getOrElse(Set())); if (source.isDefined) builder.src(cls) }
     def interfaces: Parser[Set[String]] = "implements" ~> rep1sep(class_entry, ",") ^^ (x => x.toSet)
@@ -192,7 +211,8 @@ object InheritanceMap {
     def field_line: Parser[X] = opt("static") ~ "field" ~ class_entry ~ ident ~ type_entry_nv ^^ { case isStatic ~ _ ~ cls ~ name ~ fieldType => builder => builder.field(cls, name, fieldType, isStatic.isDefined) }
     def method_line: Parser[X] = opt("static") ~ "method" ~ class_entry ~ identm ~ msig ^^ { case isStatic ~ _ ~ cls ~ name ~ signature => builder => builder.method(cls, name, signature, isStatic.isDefined) }
     def param_line: Parser[X] = "parameter" ~> class_entry ~ identm ~ msig ~ wholeNumber ~ ident ^^ { case cls ~ mname ~ signature ~ idx ~ name => builder => builder.param(cls, mname, signature, idx.toInt, name)}
-    def override_line: Parser[X] = "override" ~> class_entry ~ ident ~ msig ~ "from" ~ class_entry ~ ident ~ msig ^^ { case cls ~ name ~ signature ~ _ ~ fromCls ~ fromName ~ fromSig => builder => builder.overrides(MethodInfo(cls, name, signature), MethodInfo(fromCls, fromName, fromSig)) }
+    def override_line: Parser[X] = "override" ~> class_entry ~ identm ~ msig ~ "from" ~ class_entry ~ ident ~ msig ^^ { case cls ~ name ~ signature ~ _ ~ fromCls ~ fromName ~ fromSig => builder => builder.overrides(MethodInfo(cls, name, signature), MethodInfo(fromCls, fromName, fromSig)) }
+    def lambda_line: Parser[X] = "lambda" ~> class_entry ~ ident ~ "with" ~ class_entry ~ identm ~ msig ~ "implements" ~ class_entry ^^ { case cls ~ lambdaId ~ _ ~ implCls ~ implName ~ implsSig ~ _ ~ implementedCls => builder => builder.lambda(cls, lambdaId, MethodInfo(implCls, implName, implsSig), implementedCls) }
   }
   
   class Builder {
@@ -203,6 +223,7 @@ object InheritanceMap {
     private val methods = mutable.Map[MethodInfo, Boolean]()
     private val params = mutable.Set[ParamInfo]()
     private val overrides = mutable.Map[MethodInfo, mutable.Set[MethodInfo]]()
+    private val lambdas = mutable.Map[LambdaInfo, LambdaImplInfo]()
     
     def cls(cls: String, parent: Option[String], interfaces: Set[String]): this.type = {
       classes.put(cls, ClassInfo(parent.getOrElse(InheritanceMap.ROOT), interfaces))
@@ -238,7 +259,12 @@ object InheritanceMap {
       this
     }
     
-    def build(): InheritanceMap = new InheritanceMap(classes.toMap, sourceClasses.toSet, fields.toMap, methods.toMap, params.toSet, overrides.map(e => (e._1, e._2.toSet)).toMap)
+    def lambda(cls: String, lambdaId: String, implementation: MethodInfo, implementedCls: String): this.type = {
+      lambdas.put(LambdaInfo(cls, lambdaId), LambdaImplInfo(implementation, implementedCls))
+      this
+    }
+    
+    def build(): InheritanceMap = new InheritanceMap(classes.toMap, sourceClasses.toSet, fields.toMap, methods.toMap, params.toSet, overrides.map(e => (e._1, e._2.toSet)).toMap, lambdas.toMap)
   }
 }
 
@@ -290,4 +316,14 @@ case class ParamInfo(method: MethodInfo, idx: Int, name: String) {
       }
     }
   }
+}
+
+case class LambdaInfo(cls: String, lambdaId: String) {
+  
+  def remap(mappings: IMappingFile): LambdaInfo = LambdaInfo(mappings.remapClass(cls), lambdaId)
+}
+
+case class LambdaImplInfo(implementation: MethodInfo, implementedCls: String) {
+  
+  def remap(mappings: IMappingFile): LambdaImplInfo = LambdaImplInfo(implementation.remap(mappings), mappings.remapClass(implementedCls))
 }

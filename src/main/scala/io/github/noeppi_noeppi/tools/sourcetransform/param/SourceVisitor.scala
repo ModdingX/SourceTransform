@@ -1,18 +1,20 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.param
 
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, MethodInfo}
-import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassTrackingVisitor, SourceUtil}
+import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, LambdaInfo, MethodInfo}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassTrackingVisitor, SourceHacks, SourceUtil}
 import org.eclipse.jdt.core.dom._
 
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
-class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map[MethodInfo, ParamSanitizer], val quiet: Boolean) extends ClassTrackingVisitor {
+class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map[MethodInfo, ParamSanitizer], val lambdaTargets: mutable.Map[LambdaInfo, LambdaTarget], val quiet: Boolean) extends ClassTrackingVisitor {
   
   private var localClassLevel = 0
   private val imports = mutable.Set[String]()
   private val nameScopes = mutable.Stack[mutable.Set[String]]()
+  private val staticInitNames = mutable.Map[String, mutable.Set[ParamSanitizer]]()
+  private val lambdaTargetStack = mutable.Stack[LambdaTarget]()
   
   private def pushLocalClass(): Unit = localClassLevel += 1
   private def popLocalClass(): Unit = if (localClassLevel > 0) localClassLevel -= 1 else throw new IllegalStateException("Negative local class level.")
@@ -20,16 +22,27 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
   private def pushScope(): Unit = nameScopes.push(mutable.Set())
   private def popScope(): Unit = if (nameScopes.nonEmpty) nameScopes.pop() else throw new IllegalStateException("Can't pop empty scope stack.")
   
+  private def pushLambdaTarget(info: LambdaTarget): Unit = lambdaTargetStack.push(info)
+  private def popLambdaTarget(): Unit = if (lambdaTargetStack.nonEmpty) lambdaTargetStack.pop() else throw new IllegalStateException("Can't pop empty method stack.")
+  
   private def defineImport(name: String): Unit = imports.addOne(name)
   private def defineType(name: String): Unit = if (nameScopes.isEmpty) imports.addOne(name) else nameScopes.head.addOne(name)
   private def defineName(name: String): Unit = if (nameScopes.nonEmpty) nameScopes.head.addOne(name) else throw new IllegalStateException("Can't define name on empty scope stack: " + name)
   
-  def checkEnd(): Unit = {
+  def endParse(): Unit = {
+    for ((key, value) <- staticInitNames if value.nonEmpty) {
+      val info = MethodInfo(key, "<clinit>", "()V")
+      val sanitizer = ParamSanitizer(value.flatMap(_.forbidden).toSet, value.map(_.localClassLevel).maxOption.getOrElse(0))
+      sanitizers.put(info, sanitizer)
+    }
     if (localClassLevel != 0) throw new IllegalStateException("Invalid local class level.")
     if (nameScopes.nonEmpty) throw new IllegalStateException("Invalid open scope.")
+    if (lambdaTargetStack.nonEmpty) throw new IllegalStateException("Invalid open method.")
   }
   
   private def buildSanitizer() = ParamSanitizer(imports.toSet | nameScopes.headOption.getOrElse(Set()), localClassLevel)
+  
+  private def currentLambdaTarget(): LambdaTarget = lambdaTargetStack.headOption.getOrElse(LambdaTarget.Skip)
   
   private def startType(node: AbstractTypeDeclaration): Boolean = {
     if (node.isLocalTypeDeclaration) pushLocalClass()
@@ -88,14 +101,39 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
   
   
   override def visit(node: Initializer): Boolean = {
+    node.getParent match {
+      case t: AbstractTypeDeclaration =>
+        val binding = t.resolveBinding()
+        if (binding == null || binding.getBinaryName == null) {
+          pushLambdaTarget(LambdaTarget.Skip)
+        } else {
+          pushLambdaTarget(LambdaTarget.Method(MethodInfo(binding.getBinaryName.replace('.', '/'), "<clinit>", "()V")))
+        }
+      case _ => pushLambdaTarget(LambdaTarget.Skip)
+    }
     pushScope()
     true
   }
   override def endVisit(node: Initializer): Unit = {
+    val sanitizer = buildSanitizer()
     popScope()
+    popLambdaTarget()
+    node.getParent match {
+      case t: AbstractTypeDeclaration =>
+        val binding = t.resolveBinding()
+        if (binding == null) {
+          warn("Failed to resolve binding for static initializer in class " + currentClass())
+        } else if (binding.getBinaryName == null) {
+          warn("Failed to resolve binary for static initializer declaration in class " + currentClass())
+        } else {
+          staticInitNames.getOrElseUpdate(binding.getBinaryName.replace('.', '/'), mutable.Set()).add(sanitizer)
+        }
+      case _ => warn("Unmatched static initializer found in class " + currentClass())
+    }
   }
   
   override def visit(node: MethodDeclaration): Boolean = {
+    pushLambdaTarget(LambdaTarget.forMethod(SourceUtil.methodInfo(node.resolveBinding()).left.toOption.orNull))
     pushScope()
     node.parameters().asScala.foreach {
       case p: VariableDeclaration => defineName(p.getName.getIdentifier)
@@ -106,41 +144,45 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
   override def endVisit(node: MethodDeclaration): Unit = {
     val sanitizer = buildSanitizer()
     popScope()
-    val info = SourceUtil.methodInfo(node.resolveBinding())
-    if (info == null) {
-      warn("Failed to resolve method binding: Skipping method: " + node.getName.getFullyQualifiedName + " (in " + currentClass() + ")")
-    } else {
-      sanitizers.put(info, sanitizer)
+    popLambdaTarget()
+    SourceHacks.getBinaryDescriptor(node.resolveBinding())
+    SourceUtil.methodInfo(node.resolveBinding()) match {
+      case Left(info) => sanitizers.put(info, sanitizer)
+      case Right(err) => warn("Failed to resolve method binding: Skipping method: " + node.getName.getFullyQualifiedName + " (in " + currentClass() + "): " + err)
     }
   }
 
   override def visit(node: LambdaExpression): Boolean = {
-    pushLocalClass()
     // Lambdas live in the same scope
     node.parameters().asScala.foreach {
       case p: VariableDeclaration => defineName(p.getName.getIdentifier)
+      case p => warn("Failed to process lambda parameter: " + p)
     }
     true
   }
   override def endVisit(node: LambdaExpression): Unit = {
-    val sanitizer = buildSanitizer()
     // Lambdas live in the same scope
-    popLocalClass()
-    val info = SourceUtil.methodInfo(node.resolveMethodBinding())
-    if (info == null) {
+    val target = currentLambdaTarget()
+    val lambda = SourceUtil.getLambdaImplId(node.resolveMethodBinding())
+    if (lambda == null) {
       warn("Failed to resolve lambda binding: Skipping lambda (in " + currentClass() + ")")
     } else {
-      sanitizers.put(info, sanitizer)
+      lambdaTargets.put(lambda, target)
     }
   }
 
   
 
   override def visit(node: FieldDeclaration): Boolean = {
-    // Field declarations contain variable declaration fragments
-    // that we don't want to process later
-    false
+    // We want to skip variable declaration fragments from this but
+    // further processing is needed to match lambdas.
+    pushLambdaTarget(LambdaTarget.Keep)
+    true
   }
+  override def endVisit(node: FieldDeclaration): Unit = {
+    popLambdaTarget()
+  }
+  
   override def visit(node: SingleVariableDeclaration): Boolean = {
     defineName(node.getName.getIdentifier)
     true
@@ -158,7 +200,10 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
     true
   }
   override def visit(node: VariableDeclarationFragment): Boolean = {
-    defineName(node.getName.getIdentifier)
+    node.getParent match {
+      case _: FieldDeclaration => // Skip names from field declarations
+      case _ => defineName(node.getName.getIdentifier)
+    }
     true
   }
 
@@ -167,6 +212,8 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
       case n: FieldAccess if n.getName == node => // Skip
       case n: SuperFieldAccess if n.getName == node => // Skip
       case n: LabeledStatement if n.getLabel == node => // Skip
+      case n: BreakStatement if n.getLabel == node => // Skip
+      case n: ContinueStatement if n.getLabel == node => // Skip
       case _ =>
         node.resolveBinding() match {
           case null =>

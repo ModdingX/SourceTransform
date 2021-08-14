@@ -1,6 +1,6 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.util
 
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, MethodInfo}
+import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, LambdaInfo, MethodInfo}
 import org.eclipse.jdt.core.dom.{ASTParser, IMethodBinding, ModuleQualifiedName, Name, QualifiedName, SimpleName, SingleVariableDeclaration}
 
 import java.nio.ByteBuffer
@@ -28,10 +28,7 @@ object SourceUtil {
     parser.setEnvironment(classpath.map(_.toAbsolutePath.normalize().toString).toArray, Array(base.toAbsolutePath.normalize().toString), null, false)
     parser.setResolveBindings(true)
     parser.setBindingsRecovery(true)
-    val unit = if (path.endsWith(".java")) path.substring(0, path.length - 5) else path
-    val unitPath = base.resolve(unit)
-    val unitId = (0 until unitPath.getNameCount).map(i => unitPath.getName(i)).mkString("/")
-    parser.setUnitName(unitId)
+    parser.setUnitName(path)
     val in = Files.newInputStream(base.resolve(path))
     val data = StandardCharsets.UTF_8.decode(ByteBuffer.wrap(in.readAllBytes()))
     val array = if (data.hasArray) data.array() else (0 until data.length()).map(i => data.get(i)).toArray
@@ -73,17 +70,22 @@ object SourceUtil {
       .filter(!_.contains("$")).filter(_.toIntOption.isEmpty)
   }
   
-  def methodInfo(binding: IMethodBinding): MethodInfo = {
-    if (binding == null) return null
+  def methodInfo(binding: IMethodBinding): Either[MethodInfo, String] = {
+    if (binding == null) return Right("Null binding")
     val cls = binding.getDeclaringClass
-    if (cls == null) return null
-    if (cls.getBinaryName == null) return null
-    if (binding.getReturnType.getBinaryName == null) return null
-    if (binding.getParameterTypes.exists(str => str.getBinaryName == null)) return null
-    
+    if (cls == null) return Right("No declaring class for method found.")
+    if (cls.getBinaryName == null) return Right("Failed to get binary name")
     val name = if (binding.isConstructor) "<init>" else binding.getName
-    val ret = if (binding.isConstructor) "V" else SourceUtil.internal(binding.getReturnType.getBinaryName)
-    val desc = "(" + binding.getParameterTypes.map(str => SourceUtil.internal(str.getBinaryName)).mkString("") + ")" + ret
-    MethodInfo(cls.getBinaryName.replace('.', '/'), name, desc)
+    SourceHacks.getBinaryDescriptor(binding) match {
+      case Some(sig) => Left(MethodInfo(cls.getBinaryName.replace('.', '/'), name, sig))
+      case None =>
+        if (binding.getReturnType.getBinaryName == null) return Right("Failed to get return type binding")
+        if (binding.getParameterTypes.exists(str => str.getBinaryName == null)) return Right("Failed to get signature binding")
+        val ret = if (binding.isConstructor) "V" else SourceUtil.internal(binding.getReturnType.getBinaryName)
+        val desc = "(" + binding.getParameterTypes.map(str => SourceUtil.internal(str.getBinaryName)).mkString("") + ")" + ret
+        Left(MethodInfo(cls.getBinaryName.replace('.', '/'), name, desc))
+    }
   }
+  
+  def getLambdaImplId(binding: IMethodBinding): LambdaInfo = SourceHacks.getLambdaImplId(binding)
 }

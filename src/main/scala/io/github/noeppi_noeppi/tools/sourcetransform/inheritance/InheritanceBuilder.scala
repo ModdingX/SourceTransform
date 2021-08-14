@@ -59,6 +59,7 @@ object InheritanceBuilder {
     builder.src(cls)
     val overridableMethods = mutable.Set[(String, String)]()
     val syntheticOverrides = mutable.Map[(String, String), (String, String)]()
+    var lambdaIdx = 0 // Keep track of lambda indices as they would appear in source code. We use these as lambda ids.
     data.accept(new ClassVisitor(Opcodes.ASM9) {
       
       override def visitField(access: Int, name: String, descriptor: String, signature: String, value: Any): FieldVisitor = {
@@ -104,6 +105,7 @@ object InheritanceBuilder {
           private val visited = mutable.Set[Int]()
           
           override def visitLocalVariable(paramName: String, paramDescriptor: String, paramSignature: String, start: Label, end: Label, local: Int): Unit = {
+            super.visitLocalVariable(paramName, paramDescriptor, paramSignature, start, end, local)
             if (locals) {
               addSignatureInheritance(failer, paramDescriptor, builder, classpath)
             }
@@ -126,6 +128,31 @@ object InheritanceBuilder {
                 }
                 builder.param(cls, name, descriptor, idx, cleanedParameter)
               case _ =>
+            }
+          }
+
+          override def visitInvokeDynamicInsn(name: String, descriptor: String, bootstrapMethodHandle: Handle, bootstrapMethodArguments: AnyRef*): Unit = {
+            super.visitInvokeDynamicInsn(name, descriptor, bootstrapMethodHandle, bootstrapMethodArguments: _*)
+            if (bootstrapMethodHandle.getOwner == "java/lang/invoke/LambdaMetafactory" && bootstrapMethodHandle.getName == "metafactory") {
+              // Lambda
+              val lambdaId = "lambda$" + lambdaIdx
+              lambdaIdx += 1
+              // The implemented class of the lambda is the return type from the descriptor (args are final locals used in the lambda)
+              // If we can't get a return type, use Object
+              val implementedCls = Util.returnCls(descriptor).getOrElse({
+                System.err.println("Failed to resolve implemented class for lambda in " + cls + " " + lambdaId + "@" + name + descriptor + ". Using " + InheritanceMap.ROOT)
+                InheritanceMap.ROOT
+              })
+              // Get the handle passed to the metafactory and try to resolve the implementation method
+              val handle = (if (bootstrapMethodArguments.size >= 2) Some(bootstrapMethodArguments(1)) else None) match {
+                case Some(h: Handle) => h
+                case _ =>
+                  System.err.println("Failed to resolve method handle for lambda in " + cls + " " + lambdaId + "@" + name + descriptor)
+                  null
+              }
+              if (handle != null) {
+                builder.lambda(cls, lambdaId, MethodInfo(handle.getOwner, handle.getName, handle.getDesc), implementedCls)
+              }
             }
           }
         }

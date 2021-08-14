@@ -1,7 +1,7 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.param
 
 import com.google.gson.{Gson, GsonBuilder}
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, MethodInfo}
+import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, LambdaInfo, MethodInfo}
 import io.github.noeppi_noeppi.tools.sourcetransform.util.{LanguageLevel, SourceUtil, Util}
 import joptsimple.util.{PathConverter, PathProperties}
 import joptsimple.{OptionException, OptionParser}
@@ -60,9 +60,10 @@ object ParchmentSanitizer {
       inheritanceReader.close()
 
       val ignored = set.valuesOf(specIgnore).asScala.map(_.replace('.', '/')).toSet
+      val ignoredStart = ignored.map(_ + "/")
 
       val base = set.valueOf(specSources).toAbsolutePath.normalize()
-      val files = SourceUtil.getJavaSources(base).filter(f => !ignored.exists(f.startsWith))
+      val files = SourceUtil.getJavaSources(base).filter(f => !ignored.contains(f) && !ignoredStart.exists(f.startsWith))
       val createParser = SourceUtil.createParserFactory(set.valueOf(specLevel), base, set.valuesOf(specClasspath).asScala.toSeq) _
       
       val executor = new ScheduledThreadPoolExecutor(1 max (Runtime.getRuntime.availableProcessors() - 1), (action: Runnable) => {
@@ -70,23 +71,25 @@ object ParchmentSanitizer {
         thread.setDaemon(true)
         thread
       })
-      val sourceFilesBetweenNotify = 100 min (files.size / 20)
+      val sourceFilesBetweenNotify = 1 max (100 min (files.size / 20))
       var completed = 0
       val lock = new AnyRef
       val futures = ListBuffer[Future[_]]()
       
       val mapBuilder = mutable.Map[MethodInfo, ParamSanitizer]()
+      val lambdaBuilder = mutable.Map[LambdaInfo, LambdaTarget]()
       files.foreach(file => {
         futures.addOne(executor.submit(new Runnable {
           override def run(): Unit = {
             val currentMap = mutable.Map[MethodInfo, ParamSanitizer]()
+            val lambdaMap = mutable.Map[LambdaInfo, LambdaTarget]()
             try {
               val parser = createParser(file)
               parser.createAST(null) match {
                 case cu: CompilationUnit =>
-                  val visitor = new SourceVisitor(inheritance, currentMap, set.has(specQuiet))
+                  val visitor = new SourceVisitor(inheritance, currentMap, lambdaMap, set.has(specQuiet))
                   cu.accept(visitor)
-                  visitor.checkEnd()
+                  visitor.endParse()
                 case x => System.err.println("Parser returned invalid result for " + file + ": " + x.getClass + " " + x)
               }
             } catch {
@@ -94,6 +97,7 @@ object ParchmentSanitizer {
             }
             lock.synchronized {
               mapBuilder.addAll(currentMap)
+              lambdaBuilder.addAll(lambdaMap)
               completed += 1
               if (completed % sourceFilesBetweenNotify == 0) {
                 val percentage = Math.round(100 * (completed / files.size.toDouble))
@@ -108,7 +112,9 @@ object ParchmentSanitizer {
       futures.foreach(_.get())
       executor.shutdownNow()
       System.err.println(s"100% (${files.size} / ${files.size})")
+      
       val map = mapBuilder.toMap
+      val lambdas = lambdaBuilder.toMap
       
       val inputReader = Files.newBufferedReader(set.valueOf(specInput))
       val input = GSON.fromJson(inputReader, classOf[VersionedMappingDataContainer])
@@ -121,15 +127,55 @@ object ParchmentSanitizer {
       input.getClasses.forEach(cls => {
         val cb = output.createClass(cls.getName).addJavadoc(cls.getJavadoc)
         cls.getFields.forEach(fd => cb.createField(fd.getName, fd.getDescriptor).addJavadoc(fd.getJavadoc))
+        // Sanitizers after param mappings have been applied. Required for lambdas so lambda parameters
+        // don't conflict with method parameters.
+        val renamedMappers = mutable.Map[MethodInfo, ParamSanitizer]()
         cls.getMethods.forEach(md => {
           val info = MethodInfo(cls.getName, md.getName, md.getDescriptor)
-          val mapper = map.getOrElse(info, ParamSanitizer.queryDefault(info, set.has(specQuiet)))
-          // Skip lambdas if they were skipped on source code processing
-          if (!md.getName.startsWith("lambda$") || mapper != ParamSanitizer.DEFAULT) {
+          // First process non-lambdas as for processing lambdas we need the renamed parameters
+          if (!md.getName.startsWith("lambda$")) {
+            val mapper = map.getOrElse(info, ParamSanitizer.queryDefault(info, set.has(specQuiet)))
+            val renames = mutable.Set[String]()
             val mb = cb.createMethod(md.getName, md.getDescriptor).addJavadoc(md.getJavadoc)
             md.getParameters.forEach(param => {
-              mb.createParameter(param.getIndex).setName(mapper.sanitize(param.getName)).setJavadoc(param.getJavadoc)
+              val newName = mapper.sanitize(param.getName)
+              mb.createParameter(param.getIndex).setName(newName).setJavadoc(param.getJavadoc)
+              renames.addOne(newName)
             })
+            renamedMappers.put(info, ParamSanitizer.withRenamed(mapper, renames.toSet))
+          }
+        })
+        cls.getMethods.forEach(md => {
+          val info = MethodInfo(cls.getName, md.getName, md.getDescriptor)
+          // Now to the lambdas
+          if (md.getName.startsWith("lambda$")) {
+            val sourceLambdas = inheritance.getLambdasFor(info)
+            // Skip lambdas where not all occurrences are found in source code.
+            if (sourceLambdas.nonEmpty && sourceLambdas.forall(l => lambdas.contains(l))) {
+              val sourceLambdaTargets = sourceLambdas.flatMap(lambdas.get)
+              val factory: MethodInfo => ParamSanitizer = m => renamedMappers.getOrElseUpdate(m, map.getOrElse(m, ParamSanitizer.queryDefault(info, set.has(specQuiet))))
+              val mapperOptions: Seq[Option[ParamSanitizer]] = sourceLambdaTargets.toSeq.map(t => t.resolve(factory))
+              if (mapperOptions.forall(_.isDefined)) {
+                // If one is not defined, it was set to skip
+                // which causes the entire lambda to skip.
+                ParamSanitizer.queryLambda(info, set.has(specQuiet), mapperOptions.map(_.get): _*) match {
+                  case Some(mapper) =>
+                    val mb = cb.createMethod(md.getName, md.getDescriptor).addJavadoc(md.getJavadoc)
+                    md.getParameters.forEach(param => {
+                      mb.createParameter(param.getIndex).setName(mapper.sanitize(param.getName)).setJavadoc(param.getJavadoc)
+                    })
+                  case None =>
+                }
+              }
+            } else {
+              if (!set.has(specQuiet)) {
+                if (sourceLambdas.isEmpty) {
+                  println("Skipping lambda-like method as it has no known use as a lambda: " + info.cls + " " + info.name + info.signature)
+                } else {
+                  println("Skipping lambda as bytecode and sourcecode occurrences mismatch: Missing usages:" + sourceLambdas.filter(!lambdas.contains(_)).map(l => l.cls + " " + l.lambdaId).mkString("(", ",", ")") + " for method " + info.cls + " " + info.name + info.signature)
+                }
+              }
+            }
           }
         })
       })

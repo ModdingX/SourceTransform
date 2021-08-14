@@ -62,6 +62,14 @@ object Util {
     case MSIG_PARAMS(params) => MSIG_SIMPLIFIED_ARR.replaceAllIn(CLS_TYPE.replaceAllIn(params, "L"), "[")
     case _ => ""
   }
+  
+  def returnCls(msig: String): Option[String] = {
+    val ret = if (msig.contains(")")) msig.substring(msig.lastIndexOf(')') + 1) else msig
+    ret match {
+      case CLS_TYPE(t) => Some(t)
+      case _ => None
+    }
+  }
 
   def enum[T <: Enum[T] : ClassTag]: EnumConverter[T] = new ConcreteEnumConverter(classTag[T].runtimeClass.asInstanceOf[Class[T]])
 }
