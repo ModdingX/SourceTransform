@@ -1,7 +1,7 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.param
 
 import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, LambdaInfo, MethodInfo}
-import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassTrackingVisitor, SourceHacks, SourceUtil}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassTrackingVisitor, SourceUtil}
 import org.eclipse.jdt.core.dom._
 
 import scala.annotation.tailrec
@@ -145,7 +145,6 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
     val sanitizer = buildSanitizer()
     popScope()
     popLambdaTarget()
-    SourceHacks.getBinaryDescriptor(node.resolveBinding())
     SourceUtil.methodInfo(node.resolveBinding()) match {
       case Left(info) => sanitizers.put(info, sanitizer)
       case Right(err) => warn("Failed to resolve method binding: Skipping method: " + node.getName.getFullyQualifiedName + " (in " + currentClass() + "): " + err)

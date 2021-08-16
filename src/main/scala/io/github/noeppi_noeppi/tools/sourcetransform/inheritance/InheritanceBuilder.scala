@@ -110,9 +110,7 @@ object InheritanceBuilder {
               addSignatureInheritance(failer, paramDescriptor, builder, classpath)
             }
             
-            val synthetics = if (name == "<init>" && data.getSuperName == "java/lang/Enum") {
-              3
-            } else if (name == "<init>" || (access & Opcodes.ACC_STATIC) == 0) {
+            val synthetics = if (name == "<init>" || (access & Opcodes.ACC_STATIC) == 0) {
               1
             } else {
               0
