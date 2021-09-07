@@ -155,7 +155,12 @@ object ParchmentSanitizer {
               val sourceLambdaTargets = sourceLambdas.flatMap(lambdas.get)
               val factory: MethodInfo => ParamSanitizer = m => renamedMappers.getOrElseUpdate(m, map.getOrElse(m, ParamSanitizer.queryDefault(info, set.has(specQuiet))))
               val mapperOptions: Seq[Option[ParamSanitizer]] = sourceLambdaTargets.toSeq.map(t => t.resolve(factory))
-              if (mapperOptions.forall(_.isDefined)) {
+              // Check that the implementation method matches at least one lambda usage
+              // If the same lambda method is used twice, it'll get the name of the first occurrence
+              // So in case of some compiler weirdness, we have an additional safety point with this.
+              if (!sourceLambdaTargets.exists(target => target.canMatch(md.getName))) {
+                println("Skipping lambda as bytecode and sourcecode name mismatch: For lambda:" + md.getName + ", targets: " + sourceLambdaTargets.flatMap(_.lambdaName()).mkString("(", ",", ")"))
+              } else if (mapperOptions.forall(_.isDefined)) {
                 // If one is not defined, it was set to skip
                 // which causes the entire lambda to skip.
                 ParamSanitizer.queryLambda(info, set.has(specQuiet), mapperOptions.map(_.get): _*) match {
