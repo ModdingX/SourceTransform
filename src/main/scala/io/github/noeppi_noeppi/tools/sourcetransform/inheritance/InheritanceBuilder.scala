@@ -1,6 +1,6 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.inheritance
 
-import io.github.noeppi_noeppi.tools.sourcetransform.util.{ParamIndexMapper, Util}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassFailer, ParamIndexMapper, Util}
 import io.github.noeppi_noeppi.tools.sourcetransform.util.cls._
 import joptsimple.util.{PathConverter, PathProperties}
 import joptsimple.{OptionException, OptionParser}
@@ -18,6 +18,8 @@ object InheritanceBuilder {
   def run(args: String*): Unit = {
     val options = new OptionParser(false)
     val specClasses = options.acceptsAll(List("c", "classes").asJava, "The folder with the compiled classes").withRequiredArg().withValuesConvertedBy(new PathConverter(PathProperties.DIRECTORY_EXISTING))
+    val specClassNames = options.acceptsAll(List("n", "class-names").asJava, "The class names that should be treated as source classes").withRequiredArg().withValuesSeparatedBy(';')
+    val specPackageNames = options.acceptsAll(List("m", "package-names").asJava, "The package names that should be treated as source classes").withRequiredArg().withValuesSeparatedBy(';')
     val specClasspath = options.acceptsAll(List("p", "classpath").asJava, "Library classpath. Must also include the jars / jmods from the java installation.").withRequiredArg().withValuesSeparatedBy(File.pathSeparator).withValuesConvertedBy(new PathConverter())
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output file").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specLocals = options.acceptsAll(List("l", "locals").asJava, "Whether to include inheritance information for all locals, not just parameters.")
@@ -26,14 +28,26 @@ object InheritanceBuilder {
     } catch {
       case e: OptionException => System.err.println("Option exception: " + e.getMessage); options.printHelpOn(System.err); Util.exit(0)
     }
-    if (!set.has(specClasses) || !set.has(specOutput)) {
+    if ((!set.has(specClasses) && !set.has(specClassNames) && !set.has(specPackageNames)) || !set.has(specOutput)) {
       if (!set.has(specClasses)) System.out.println("Missing required option: " + specClasses)
       if (!set.has(specOutput)) System.out.println("Missing required option: " + specOutput)
       options.printHelpOn(System.out)
       System.exit(1)
+    } else if (set.has(specClasses) && (set.has(specClassNames) || set.has(specPackageNames))) {
+      if (!set.has(specClasses)) System.out.println("Can't use " + specClasses + " and " + specClassNames + "/" + specPackageNames + " together.")
+      options.printHelpOn(System.out)
+      System.exit(1)
     } else {
-      val classIndex = new TreeLocator(set.valueOf(specClasses))
-      val library = new CompoundLocator(Option(set.valuesOf(specClasspath)).map(_.asScala).getOrElse(Nil).map(p => new JarLocator(p)).toSeq: _*)
+      val library = new CompoundIndex(Option(set.valuesOf(specClasspath)).map(_.asScala).getOrElse(Nil).map(p => new JarLocator(p)).toSeq: _*)
+      val classIndex = if (set.has(specClasses)) {
+        new TreeLocator(set.valueOf(specClasses))
+      } else {
+        new FakeIndex(library,
+          set.valuesOf(specClassNames).asScala.toList.map(_.replace('.', '/')),
+          set.valuesOf(specPackageNames).asScala.toList.map(_.replace('.', '/'))
+        )
+      }
+      
       val map = buildInheritance(classIndex, library, set.has(specLocals))
       val writer = Files.newBufferedWriter(set.valueOf(specOutput), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
       map.write(writer)
@@ -280,9 +294,4 @@ object InheritanceBuilder {
       skipClasses.addOne(MethodInfo(InheritanceMap.ROOT, name, signature))
     }
   }
-}
-
-private class ClassFailer {
-  private val classes = mutable.Set[String]()
-  def warn(cls: String): Unit = if (!classes.contains(cls)) { System.err.println("Failed to load class: " + cls); classes.addOne(cls) }
 }

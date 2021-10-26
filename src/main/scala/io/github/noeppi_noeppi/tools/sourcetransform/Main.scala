@@ -3,6 +3,7 @@ package io.github.noeppi_noeppi.tools.sourcetransform
 import io.github.noeppi_noeppi.tools.sourcetransform.apply.{CommentRenameApply, RenameApply}
 import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceBuilder, InheritanceRemapper}
 import io.github.noeppi_noeppi.tools.sourcetransform.inspect.SourceInspector
+import io.github.noeppi_noeppi.tools.sourcetransform.jstype.JavaScriptGenerator
 import io.github.noeppi_noeppi.tools.sourcetransform.local.LocalMapCreator
 import io.github.noeppi_noeppi.tools.sourcetransform.param.ParchmentSanitizer
 import io.github.noeppi_noeppi.tools.sourcetransform.transform.TransformerApply
@@ -21,6 +22,7 @@ object Main extends App {
     println("  comments      Apply rename comments written via `apply` to be applied later.")
     println("  inspect       Read inspections from json and apply them to code.")
     println("  sanitize      Sanitize a parchment export by given source code so it keeps compilable.")
+    println("  jstype        Generate JavaScript/TypeScript definitions for Nashorn")
   } else {
     args(0).toLowerCase match {
       case "inheritance" => InheritanceBuilder.run(args.tail.toIndexedSeq: _*)
@@ -31,6 +33,7 @@ object Main extends App {
       case "comments" => CommentRenameApply.run(args.tail.toIndexedSeq: _*)
       case "inspect" => SourceInspector.run(args.tail.toIndexedSeq: _*)
       case "sanitize" => ParchmentSanitizer.run(args.tail.toIndexedSeq: _*)
+      case "jstype" => JavaScriptGenerator.run(args.tail.toIndexedSeq: _*)
       case x => println("Unknown sub-command: '" + x + "'")
     }
   }

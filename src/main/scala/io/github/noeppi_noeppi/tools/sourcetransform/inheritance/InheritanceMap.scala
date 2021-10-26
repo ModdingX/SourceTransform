@@ -63,6 +63,7 @@ class InheritanceMap private (
       Nil
     } else if (classes.contains(cls)) {
       val lb = ListBuffer[String]()
+      lb.addOne(classes(cls).parent)
       lb.addAll(getAllSuperClasses(classes(cls).parent))
       lb.addAll(classes(cls).interfaces.flatMap(getAllSuperClasses))
       lb.distinct.toList
@@ -119,7 +120,7 @@ class InheritanceMap private (
       bytecodeCounter += (if (simplifiedType == 'J' || simplifiedType == 'D') 2 else 1)
       idxCounter += 1
     }
-    idxCounter
+    bytecodeCounter
   }
   
   def sourcecodeToIdx(m: MethodInfo, sourcecodeIdx: Int): Int = {
