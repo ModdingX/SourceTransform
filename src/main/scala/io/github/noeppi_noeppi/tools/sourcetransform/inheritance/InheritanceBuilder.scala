@@ -1,7 +1,7 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.inheritance
 
-import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassFailer, ParamIndexMapper, Util}
 import io.github.noeppi_noeppi.tools.sourcetransform.util.cls._
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassFailer, ParamIndexMapper, Util}
 import joptsimple.util.{PathConverter, PathProperties}
 import joptsimple.{OptionException, OptionParser}
 import org.objectweb.asm._

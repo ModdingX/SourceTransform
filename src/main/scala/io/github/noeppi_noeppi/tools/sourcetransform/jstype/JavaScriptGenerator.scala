@@ -6,7 +6,7 @@ import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassFailer, Util}
 import joptsimple.util.PathConverter
 import joptsimple.{OptionException, OptionParser}
 
-import java.io.{File, Writer}
+import java.io.File
 import java.nio.file.{Files, StandardOpenOption}
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._

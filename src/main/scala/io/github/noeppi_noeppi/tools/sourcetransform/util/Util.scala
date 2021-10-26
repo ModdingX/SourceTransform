@@ -1,7 +1,6 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.util
 
 import com.google.gson.{Gson, GsonBuilder}
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, MethodInfo}
 import joptsimple.util.EnumConverter
 
 import java.util

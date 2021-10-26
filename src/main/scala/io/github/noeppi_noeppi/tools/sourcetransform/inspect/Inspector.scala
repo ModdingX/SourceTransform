@@ -2,7 +2,7 @@ package io.github.noeppi_noeppi.tools.sourcetransform.inspect
 
 import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.InheritanceMap
 import org.eclipse.jdt.core.compiler.IProblem
-import org.eclipse.jdt.core.dom.{ASTNode, ASTVisitor, CompilationUnit, IVariableBinding, LambdaExpression, MethodDeclaration, RecordDeclaration, VariableDeclaration}
+import org.eclipse.jdt.core.dom._
 
 import java.io.Writer
 import scala.collection.mutable

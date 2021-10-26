@@ -1,7 +1,7 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.util
 
 import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, LambdaInfo, MethodInfo}
-import org.eclipse.jdt.core.dom.{ASTParser, IMethodBinding, ModuleQualifiedName, Name, QualifiedName, SimpleName, SingleVariableDeclaration}
+import org.eclipse.jdt.core.dom._
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets

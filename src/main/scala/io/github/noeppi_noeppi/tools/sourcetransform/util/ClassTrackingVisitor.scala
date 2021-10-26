@@ -1,6 +1,6 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.util
 
-import org.eclipse.jdt.core.dom.{ASTNode, ASTVisitor, AbstractTypeDeclaration, AnonymousClassDeclaration, CompilationUnit}
+import org.eclipse.jdt.core.dom._
 
 import scala.collection.mutable
 

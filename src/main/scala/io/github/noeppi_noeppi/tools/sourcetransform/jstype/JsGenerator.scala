@@ -6,7 +6,7 @@ import io.github.noeppi_noeppi.tools.sourcetransform.util.signature.SignatureNod
 import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassFailer, Util}
 import org.objectweb.asm.Opcodes
 import org.objectweb.asm.signature.SignatureReader
-import org.objectweb.asm.tree.{ClassNode, FieldNode, MethodNode}
+import org.objectweb.asm.tree.{ClassNode, MethodNode}
 
 import scala.collection.mutable
 import scala.collection.mutable.ListBuffer

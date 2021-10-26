@@ -1,7 +1,7 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.inspect.inspections
 
-import io.github.noeppi_noeppi.tools.sourcetransform.inspect.{Inspection, Inspector, Target}
 import io.github.noeppi_noeppi.tools.sourcetransform.inspect.value.Contract
+import io.github.noeppi_noeppi.tools.sourcetransform.inspect.{Inspection, Inspector, Target}
 import org.eclipse.jdt.core.dom.{ASTNode, ASTVisitor, Expression}
 
 case class AssignInspection[T](targets: List[Target], extractor: Expression => Contract[T], value: T, strict: Boolean, message: String) extends Inspection {
