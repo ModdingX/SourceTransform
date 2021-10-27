@@ -13,6 +13,14 @@ import scala.collection.mutable.ListBuffer
 import scala.jdk.CollectionConverters._
 
 object JsGenerator {
+
+  val KEYWORDS: Set[String] = Set(
+    "await", "break", "case", "catch", "class", "const", "continue", "debugger", "default",
+    "delete", "do", "else", "enum", "export", "extends", "false", "finally", "for", "function",
+    "if", "implements", "import", "in", "instanceof", "interface", "let", "new", "null", "package",
+    "private", "protected", "public", "return", "super", "switch", "static", "this", "throw",
+    "try", "true", "typeof", "var", "void", "while", "with", "yield"
+  )
   
   val CLASS_BLACKLIST: Set[String] = Set(
     InheritanceMap.ROOT,
