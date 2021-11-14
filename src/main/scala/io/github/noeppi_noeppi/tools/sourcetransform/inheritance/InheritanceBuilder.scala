@@ -22,7 +22,7 @@ object InheritanceBuilder {
     val specPackageNames = options.acceptsAll(List("m", "package-names").asJava, "The package names that should be treated as source classes").withRequiredArg().withValuesSeparatedBy(';')
     val specClasspath = options.acceptsAll(List("p", "classpath").asJava, "Library classpath. Must also include the jars / jmods from the java installation.").withRequiredArg().withValuesSeparatedBy(File.pathSeparator).withValuesConvertedBy(new PathConverter())
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output file").withRequiredArg().withValuesConvertedBy(new PathConverter())
-    val specLocals = options.acceptsAll(List("l", "locals").asJava, "Whether to include inheritance information for all locals, not just parameters.")
+    val specLocals = options.acceptsAll(List("l", "locals").asJava, "Whether to include inheritance information for all locals and lambdas, not just parameters.")
     val set = try {
       options.parse(args: _*)
     } catch {
@@ -145,7 +145,7 @@ object InheritanceBuilder {
 
           override def visitInvokeDynamicInsn(name: String, descriptor: String, bootstrapMethodHandle: Handle, bootstrapMethodArguments: AnyRef*): Unit = {
             super.visitInvokeDynamicInsn(name, descriptor, bootstrapMethodHandle, bootstrapMethodArguments: _*)
-            if (bootstrapMethodHandle.getOwner == "java/lang/invoke/LambdaMetafactory" && bootstrapMethodHandle.getName == "metafactory") {
+            if (locals && bootstrapMethodHandle.getOwner == "java/lang/invoke/LambdaMetafactory" && bootstrapMethodHandle.getName == "metafactory") {
               // Lambda
               val lambdaId = "lambda$" + lambdaIdx
               lambdaIdx += 1
