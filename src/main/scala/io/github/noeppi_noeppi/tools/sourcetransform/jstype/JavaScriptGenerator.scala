@@ -1,7 +1,7 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.jstype
 
 import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.InheritanceMap
-import io.github.noeppi_noeppi.tools.sourcetransform.util.cls.{CompoundIndex, FakeIndex, JarLocator}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.cls.{ClassLocator, CompoundIndex, FakeIndex}
 import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassFailer, Util}
 import joptsimple.util.PathConverter
 import joptsimple.{OptionException, OptionParser}
@@ -40,7 +40,7 @@ object JavaScriptGenerator {
       val inheritance = InheritanceMap.read(inheritanceReader)
       inheritanceReader.close()
       
-      val library = new CompoundIndex(Option(set.valuesOf(specClasspath)).map(_.asScala).getOrElse(Nil).map(p => new JarLocator(p)).toSeq: _*)
+      val library = new CompoundIndex(Option(set.valuesOf(specClasspath)).map(_.asScala).getOrElse(Nil).map(p => ClassLocator.file(p)).toSeq: _*)
       val classes = new FakeIndex(library,
         set.valuesOf(specClasses).asScala.map(_.replace('.', '/')).toList,
         set.valuesOf(specPackages).asScala.map(_.replace('.', '/')).toList

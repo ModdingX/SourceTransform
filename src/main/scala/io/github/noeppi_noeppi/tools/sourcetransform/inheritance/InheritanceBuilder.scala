@@ -38,7 +38,7 @@ object InheritanceBuilder {
       options.printHelpOn(System.out)
       System.exit(1)
     } else {
-      val library = new CompoundIndex(Option(set.valuesOf(specClasspath)).map(_.asScala).getOrElse(Nil).map(p => new JarLocator(p)).toSeq: _*)
+      val library = new CompoundIndex(Option(set.valuesOf(specClasspath)).map(_.asScala).getOrElse(Nil).map(p => ClassLocator.file(p)).toSeq: _*)
       val classIndex = if (set.has(specClasses)) {
         new TreeLocator(set.valueOf(specClasses))
       } else {
