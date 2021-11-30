@@ -10,7 +10,10 @@ import java.util.Hashtable;
 public enum LanguageLevel {
     JAVA_8(AST.JLS8, JavaCore.VERSION_1_8),
     JAVA_10(AST.JLS10, JavaCore.VERSION_10),
-    JAVA_16(AST.JLS16, JavaCore.VERSION_16);
+    JAVA_16(AST.JLS16, JavaCore.VERSION_16),
+    JAVA_17(AST.JLS17, JavaCore.VERSION_17);
+    
+    public static final LanguageLevel DEFAULT = JAVA_17;
 
     private final int level;
     private final String spec;

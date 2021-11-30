@@ -19,7 +19,7 @@ object SourceInspector {
     val specInheritance = options.acceptsAll(List("i", "inheritance").asJava, "The inheritance map to use").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specInspections = options.acceptsAll(List("c", "inspections").asJava, "The inspection file that will be applied").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specClasspath = options.acceptsAll(List("p", "classpath").asJava, "Library classpath. Must also include the jars / jmods from the java installation.").withRequiredArg().withValuesSeparatedBy(File.pathSeparator).withValuesConvertedBy(new PathConverter())
-    val specLevel = options.acceptsAll(List("l", "level").asJava, "Source level").withRequiredArg().withValuesConvertedBy(Util.enum[LanguageLevel]).defaultsTo(LanguageLevel.JAVA_16)
+    val specLevel = options.acceptsAll(List("l", "level").asJava, "Source level").withRequiredArg().withValuesConvertedBy(Util.enum[LanguageLevel]).defaultsTo(LanguageLevel.DEFAULT)
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output for the inspection report.").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specDefault = options.acceptsAll(List("d", "default").asJava, "Include default inspections found by eclipse JDT")
     val set = try {

@@ -23,7 +23,7 @@ object LocalMapCreator {
     val specTransformer = options.acceptsAll(List("t", "transformer").asJava, "The transformer file that will be applied").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specMappings = options.acceptsAll(List("m", "mappings").asJava, "The mappings that will be applied").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specClasspath = options.acceptsAll(List("p", "classpath").asJava, "Library classpath. Must also include the jars / jmods from the java installation.").withRequiredArg().withValuesSeparatedBy(File.pathSeparator).withValuesConvertedBy(new PathConverter())
-    val specLevel = options.acceptsAll(List("l", "level").asJava, "Source level").withRequiredArg().withValuesConvertedBy(Util.enum[LanguageLevel]).defaultsTo(LanguageLevel.JAVA_16)
+    val specLevel = options.acceptsAll(List("l", "level").asJava, "Source level").withRequiredArg().withValuesConvertedBy(Util.enum[LanguageLevel]).defaultsTo(LanguageLevel.DEFAULT)
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output for the local rename map.").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specRemap = options.acceptsAll(List("r", "remap").asJava, "Reverse-remap the transformer").availableIf(specTransformer, specMappings)
     val set = try {
