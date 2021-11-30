@@ -6,6 +6,7 @@ plugins {
 }
 
 group = 'io.github.noeppi_noeppi.tools'
+java.toolchain.languageVersion = JavaLanguageVersion.of(16)
 
 repositories {
     mavenCentral()
