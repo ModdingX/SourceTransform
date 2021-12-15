@@ -24,7 +24,7 @@ dependencies {
     implementation 'org.ow2.asm:asm-tree:9.2'
     implementation 'org.ow2.asm:asm-util:9.2'
     implementation 'net.sf.jopt-simple:jopt-simple:5.0.4'
-    implementation 'org.eclipse.jdt:org.eclipse.jdt.core:3.28.0.v20211117-1416'
+    implementation 'org.eclipse.jdt:org.eclipse.jdt.core:3.28.0'
     implementation 'org.parchmentmc:feather:1.0.0.3'
     implementation 'org.parchmentmc.feather:io-gson:1.0.0.3'
 }
