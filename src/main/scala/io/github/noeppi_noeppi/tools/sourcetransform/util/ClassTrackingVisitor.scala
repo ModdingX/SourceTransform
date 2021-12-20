@@ -23,13 +23,16 @@ class ClassTrackingVisitor extends ASTVisitor {
       case n: AbstractTypeDeclaration =>
         if (n.isMemberTypeDeclaration) {
           innerClassElems.push(n.getName.getIdentifier)
+        } else if (n.isLocalTypeDeclaration) {
+          innerClassElems.push(anonymousIndex.toString + n.getName.getIdentifier)
+          anonymousIndex += 1
         } else {
           outerClassElems.push(n.getName.getIdentifier)
           innerClassElems.clear()
           anonymousIndex = 1
         }
       case _: AnonymousClassDeclaration =>
-        innerClassElems.push("$" + anonymousIndex)
+        innerClassElems.push(anonymousIndex.toString)
         anonymousIndex += 1
       case _ =>
     }
@@ -43,7 +46,7 @@ class ClassTrackingVisitor extends ASTVisitor {
         innerClassElems.clear()
         anonymousIndex = 1
       case n: AbstractTypeDeclaration =>
-        if (n.isMemberTypeDeclaration) {
+        if (n.isMemberTypeDeclaration || n.isLocalTypeDeclaration) {
           innerClassElems.pop()
         } else {
           outerClassElems.pop()
