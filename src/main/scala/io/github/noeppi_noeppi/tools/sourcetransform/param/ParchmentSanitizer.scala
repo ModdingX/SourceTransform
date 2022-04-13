@@ -42,6 +42,7 @@ object ParchmentSanitizer {
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output for the sanitized parchment export.").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specQuiet = options.acceptsAll(List("q", "quiet").asJava, "Suppress warning message while reading source code.")
     val specIgnore = options.acceptsAll(List("b", "ignore").asJava, "Packages to ignore (with all subpackages).").withRequiredArg().withValuesSeparatedBy(',')
+    val specSrg = options.acceptsAll(List("srg").asJava, "Run in RSG mode: Parameters matching the pattern p_\\d+_ are considered unique. All sanitizers for methods with the same SRG parameters are merged.")
     val set = try {
       options.parse(args: _*)
     } catch {
@@ -66,6 +67,9 @@ object ParchmentSanitizer {
       val files = SourceUtil.getJavaSources(base).filter(f => !ignored.contains(f) && !ignoredStart.exists(f.startsWith))
       val createParser = SourceUtil.createParserFactory(set.valueOf(specLevel), base, set.valuesOf(specClasspath).asScala.toSeq) _
       
+      val quiet = set.has(specQuiet)
+      val srgMode = set.has(specSrg)
+      
       val executor = new ScheduledThreadPoolExecutor(1 max (Runtime.getRuntime.availableProcessors() - 1), (action: Runnable) => {
         val thread = new Thread(action)
         thread.setDaemon(true)
@@ -78,16 +82,19 @@ object ParchmentSanitizer {
       
       val mapBuilder = mutable.Map[MethodInfo, ParamSanitizer]()
       val lambdaBuilder = mutable.Map[LambdaInfo, LambdaTarget]()
+      val srgBuilder = mutable.Map[String, mutable.Set[MethodInfo]]()
+      
       files.foreach(file => {
         futures.addOne(executor.submit(new Runnable {
           override def run(): Unit = {
             val currentMap = mutable.Map[MethodInfo, ParamSanitizer]()
             val lambdaMap = mutable.Map[LambdaInfo, LambdaTarget]()
+            val srgMap = mutable.Map[String, mutable.Set[MethodInfo]]()
             try {
               val parser = createParser(file)
               parser.createAST(null) match {
                 case cu: CompilationUnit =>
-                  val visitor = new SourceVisitor(inheritance, currentMap, lambdaMap, set.has(specQuiet))
+                  val visitor = new SourceVisitor(inheritance, currentMap, lambdaMap, srgMap, quiet)
                   cu.accept(visitor)
                   visitor.endParse()
                 case x => System.err.println("Parser returned invalid result for " + file + ": " + x.getClass + " " + x)
@@ -98,6 +105,7 @@ object ParchmentSanitizer {
             lock.synchronized {
               mapBuilder.addAll(currentMap)
               lambdaBuilder.addAll(lambdaMap)
+              srgMap.foreach(entry => srgBuilder.getOrElseUpdate(entry._1, mutable.Set()).addAll(entry._2))
               completed += 1
               if (completed % sourceFilesBetweenNotify == 0) {
                 val percentage = Math.round(100 * (completed / files.size.toDouble))
@@ -113,8 +121,20 @@ object ParchmentSanitizer {
       executor.shutdownNow()
       System.err.println(s"100% (${files.size} / ${files.size})")
       
-      val map = mapBuilder.toMap
-      val lambdas = lambdaBuilder.toMap
+      val map: Map[MethodInfo, ParamSanitizer] = mapBuilder.toMap
+      val lambdas: Map[LambdaInfo, LambdaTarget] = lambdaBuilder.toMap
+      
+      val srgs: Map[String, Set[MethodInfo]] = if (srgMode) srgBuilder.map(entry => (entry._1, entry._2.toSet)).toMap else Map()
+      val reverseSrgs: Map[MethodInfo, Set[String]] = srgs.flatMap(entry => entry._2.map(m => (entry._1, m))).groupMap(_._2)(_._1).map(entry => (entry._1, entry._2.toSet))
+      
+      def querySanitizer(method: MethodInfo): Option[ParamSanitizer] = {
+        if (!srgMode) {
+          map.get(method)
+        } else {
+          val allMethods: Set[MethodInfo] = reverseSrgs.getOrElse(method, Set()).flatMap(srg => srgs.getOrElse(srg, Set()))
+          ParamSanitizer.merge(map.get(method), allMethods.flatMap(method => map.get(method)))
+        }
+      }
       
       val inputReader = Files.newBufferedReader(set.valueOf(specInput))
       val input = GSON.fromJson(inputReader, classOf[VersionedMappingDataContainer])
@@ -134,7 +154,7 @@ object ParchmentSanitizer {
           val info = MethodInfo(cls.getName, md.getName, md.getDescriptor)
           // First process non-lambdas as for processing lambdas we need the renamed parameters
           if (!md.getName.startsWith("lambda$")) {
-            val mapper = map.getOrElse(info, ParamSanitizer.queryDefault(info, set.has(specQuiet)))
+            val mapper = querySanitizer(info).getOrElse(ParamSanitizer.queryDefault(info, set.has(specQuiet)))
             val renames = mutable.Set[String]()
             val mb = cb.createMethod(md.getName, md.getDescriptor).addJavadoc(md.getJavadoc)
             md.getParameters.forEach(param => {

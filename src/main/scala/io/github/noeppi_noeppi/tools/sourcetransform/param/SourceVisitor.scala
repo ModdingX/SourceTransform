@@ -8,7 +8,13 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.jdk.CollectionConverters._
 
-class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map[MethodInfo, ParamSanitizer], val lambdaTargets: mutable.Map[LambdaInfo, LambdaTarget], val quiet: Boolean) extends ClassTrackingVisitor {
+class SourceVisitor(
+                     val inheritance: InheritanceMap,
+                     val sanitizers: mutable.Map[MethodInfo, ParamSanitizer],
+                     val lambdaTargets: mutable.Map[LambdaInfo, LambdaTarget],
+                     val srgMap: mutable.Map[String, mutable.Set[MethodInfo]],
+                     val quiet: Boolean
+                   ) extends ClassTrackingVisitor {
   
   private var localClassLevel = 0
   private val imports = mutable.Set[String]()
@@ -55,6 +61,12 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
     if (node.isLocalTypeDeclaration) popLocalClass()
   }
 
+  private def processSrgParam(param: String, method: MethodInfo): Unit = {
+    if (param.startsWith("p_") && param.endsWith("_") && param.substring(2, param.length - 1).toIntOption.isDefined) {
+      srgMap.getOrElseUpdate(param, mutable.Set()).add(method)
+    }
+  }
+  
 
   override def visit(node: CompilationUnit): Boolean = { pushScope(); true }
   override def endVisit(node: CompilationUnit): Unit = popScope()
@@ -146,7 +158,12 @@ class SourceVisitor(val inheritance: InheritanceMap, val sanitizers: mutable.Map
     popScope()
     popLambdaTarget()
     SourceUtil.methodInfo(node.resolveBinding()) match {
-      case Left(info) => sanitizers.put(info, sanitizer)
+      case Left(info) =>
+        sanitizers.put(info, sanitizer)
+        node.parameters().asScala.foreach {
+          case p: VariableDeclaration => processSrgParam(p.getName.getIdentifier, info)
+          case p => warn("Failed to post process method parameter: " + p)
+        }
       case Right(err) => warn("Failed to resolve method binding: Skipping method: " + node.getName.getFullyQualifiedName + " (in " + currentClass() + "): " + err)
     }
   }

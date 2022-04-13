@@ -2,6 +2,9 @@ package io.github.noeppi_noeppi.tools.sourcetransform.param
 
 import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.MethodInfo
 
+import scala.annotation.tailrec
+import scala.collection.mutable
+
 case class ParamSanitizer(forbidden: Set[String], localClassLevel: Int) {
   
   def sanitize(param: String): String = {
@@ -42,6 +45,30 @@ object ParamSanitizer {
       None
     } else {
       Some(ParamSanitizer(sanitizers.flatMap(_.forbidden).toSet, sanitizers.map(_.localClassLevel).maxOption.getOrElse(0)))
+    }
+  }
+  
+  @tailrec
+  def merge(main: Option[ParamSanitizer], additional: Set[ParamSanitizer]): Option[ParamSanitizer] = {
+    if (additional.isEmpty) {
+      main
+    } else if (main.isEmpty) {
+      merge(Some(DEFAULT), additional)
+    } else {
+      val allForbidden = mutable.Set[String]()
+      if (main.get.forbidden != null) {
+        allForbidden.addAll(main.get.forbidden)
+      }
+      for (add <- additional) {
+        if (add.forbidden != null) {
+          allForbidden.addAll(add.forbidden)
+        }
+      }
+      if (allForbidden.isEmpty && main.get.forbidden == null) {
+        main
+      } else {
+        Some(ParamSanitizer(allForbidden.toSet, main.get.localClassLevel))
+      }
     }
   }
 }
