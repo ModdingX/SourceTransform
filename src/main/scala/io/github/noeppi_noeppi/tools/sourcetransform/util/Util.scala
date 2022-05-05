@@ -28,11 +28,11 @@ object Util {
   
   def exit(code: Int): Nothing = {
     System.exit(code)
-    throw new Error("System.exit returned.")
+    throw new Error("System.exit() returned.")
   }
   
   // Will strip off arrays
-  def getParamTypeForMatch(signature: String, idx: Int): String = {
+  def getParamTypeForTransformerMatch(signature: String, idx: Int): String = {
     try {
       var sig = signature
       if (signature.startsWith("(")) sig = sig.substring(1)

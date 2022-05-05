@@ -1,42 +1,41 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.util
 
+import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.MethodInfo
+import org.objectweb.asm.Opcodes
+
 object ParamIndexMapper {
 
-  def translateLocalIdx(local: Int, synthetics: Int, sig: String): Option[Int] = {
-    if (local < synthetics) {
-      // Synthetic value that is a not a real parameter, return None
-      None
-    } else {
-      val args = reducedArgString(sig)
-      var bytecodeIdx = synthetics
-      var idx = 0
-      for (c <- args) {
-        if (bytecodeIdx >= local) {
-          return Some(idx)
-        } else {
-          bytecodeIdx += (if (c == 'J' || c == 'D') 2 else 1)
-          idx += 1
-        }
-      }
-      None
+  def bytecodeToIdx(m: MethodInfo, isStatic: Boolean, bytecodeIdx: Int): Int = {
+    var bytecodeCounter = if (isStatic) 0 else 1
+    var idxCounter = 0
+    val simplified = Util.simplifiedSignatureParams(m.signature)
+    while (bytecodeCounter < bytecodeIdx) {
+      val simplifiedType = if (idxCounter < simplified.length) simplified.charAt(idxCounter) else 'L'
+      bytecodeCounter += (if (simplifiedType == 'J' || simplifiedType == 'D') 2 else 1)
+      idxCounter += 1
     }
+    idxCounter
+  }
+
+  def idxToBytecode(m: MethodInfo, isStatic: Boolean, idx: Int): Int = {
+    var bytecodeCounter = if (isStatic) 0 else 1
+    var idxCounter = 0
+    val simplified = Util.simplifiedSignatureParams(m.signature)
+    while (idxCounter < idx) {
+      val simplifiedType = if (idxCounter < simplified.length) simplified.charAt(idxCounter) else 'L'
+      bytecodeCounter += (if (simplifiedType == 'J' || simplifiedType == 'D') 2 else 1)
+      idxCounter += 1
+    }
+    bytecodeCounter
   }
   
-  private def reducedArgString(sig: String): String = {
-    val sb = new StringBuilder
-    var skipping = false
-    for (c <- sig) {
-      if (c == ';') {
-        skipping = false
-      } else if (!skipping && c != '(') {
-        if (c == ')') {
-          return sb.toString()
-        } else {
-          sb.append(c)
-          if (c == 'L') skipping = true
-        }
-      }
+  def lvtToIdx(access: Int, name: String, descriptor: String, lvt: Int): Option[Int] = {
+    var lvtCounter = if (name != "<init>" && (access & Opcodes.ACC_STATIC) != 0) 0 else 1
+    val simplified = Util.simplifiedSignatureParams(descriptor)
+    for ((simplifiedType, idx) <- simplified.zipWithIndex) {
+      if (lvtCounter == lvt) return Some(idx)
+      lvtCounter += (if (simplifiedType == 'J' || simplifiedType == 'D') 2 else 1)
     }
-    sb.toString()
+    None
   }
 }

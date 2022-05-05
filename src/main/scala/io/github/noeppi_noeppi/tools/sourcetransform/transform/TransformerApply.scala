@@ -118,7 +118,7 @@ object TransformerApply {
         .headOption match {
         case Some(name) => transformation.transformParam(info, name)
         case None => transform(info.name, TransformTarget.PARAMETER, t => {
-          t.matchBaseMethod(info.name, info.method.signature) && (t.matchTypeSignature(inheritance, Util.getParamTypeForMatch(info.method.signature, info.idx)) || checkClassFor(info.method.cls, t.baseType))
+          t.matchBaseMethod(info.name, info.method.signature) && (t.matchTypeSignature(inheritance, Util.getParamTypeForTransformerMatch(info.method.signature, info.idx)) || checkClassFor(info.method.cls, t.baseType))
         }, n => transformation.transformParam(info, n))
       }
     }

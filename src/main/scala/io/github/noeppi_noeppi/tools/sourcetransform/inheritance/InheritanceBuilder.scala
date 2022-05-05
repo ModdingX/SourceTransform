@@ -123,14 +123,8 @@ object InheritanceBuilder {
             if (locals) {
               addSignatureInheritance(failer, paramDescriptor, builder, classpath)
             }
-            
-            val synthetics = if (name == "<init>" || (access & Opcodes.ACC_STATIC) == 0) {
-              1
-            } else {
-              0
-            }
-            
-            ParamIndexMapper.translateLocalIdx(local, synthetics, descriptor) match {
+
+            ParamIndexMapper.lvtToIdx(access, name, descriptor, local) match {
               case Some(idx) if !visited.contains(idx) =>
                 visited.addOne(idx)
                 val cleanedParameter = if (paramName.nonEmpty && Character.isJavaIdentifierStart(paramName.head) && paramName.tail.forall(Character.isJavaIdentifierPart)) {

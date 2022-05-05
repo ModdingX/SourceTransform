@@ -1,6 +1,6 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.inheritance
 
-import io.github.noeppi_noeppi.tools.sourcetransform.util.{CommonParsers, Util}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{CommonParsers, ParamIndexMapper, Util}
 import net.minecraftforge.srgutils.IMappingFile
 
 import java.io.{BufferedReader, Writer}
@@ -99,17 +99,7 @@ class InheritanceMap private (
   
   def isStatic(m: MethodInfo): Boolean = methodsExtended.getOrElse(m, false)
   
-  def bytecodeToIdx(m: MethodInfo, bytecodeIdx: Int): Int = {
-    var bytecodeCounter = if (isStatic(m)) 0 else 1
-    var idxCounter = 0
-    val simplified = Util.simplifiedSignatureParams(m.signature)
-    while (bytecodeCounter < bytecodeIdx) {
-      val simplifiedType = if (idxCounter < simplified.length) simplified.charAt(idxCounter) else 'L'
-      bytecodeCounter += (if (simplifiedType == 'J' || simplifiedType == 'D') 2 else 1)
-      idxCounter += 1
-    }
-    idxCounter
-  }
+  def bytecodeToIdx(m: MethodInfo, bytecodeIdx: Int): Int = ParamIndexMapper.bytecodeToIdx(m, isStatic(m), bytecodeIdx)
   
   def idxToBytecode(m: MethodInfo, idx: Int): Int = {
     var bytecodeCounter = if (isStatic(m)) 0 else 1
@@ -121,22 +111,6 @@ class InheritanceMap private (
       idxCounter += 1
     }
     bytecodeCounter
-  }
-  
-  def sourcecodeToIdx(m: MethodInfo, sourcecodeIdx: Int): Int = {
-    if (isSubClass(m.cls, "java/lang/Enum")) {
-      sourcecodeIdx + 2
-    } else {
-      sourcecodeIdx
-    }
-  }
-  
-  def idxToSourcecode(m: MethodInfo, idx: Int): Int = {
-    if (isSubClass(m.cls, "java/lang/Enum")) {
-      0 max (idx - 2)
-    } else {
-      idx
-    }
   }
   
   def getParam(m: MethodInfo, idx: Int): Option[ParamInfo] = paramMap.getOrElse(m, Map()).get(idx)
