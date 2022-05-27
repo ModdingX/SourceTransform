@@ -1,9 +1,9 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.jstype
 
-import io.github.noeppi_noeppi.tools.sourcetransform.util.Util
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{Bytecode, Util}
 import org.objectweb.asm.tree.{AnnotationNode, FieldNode, MethodNode}
 
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.given
 
 class NullChecker(val nulls: Set[String]) {
   
@@ -19,10 +19,10 @@ class NullChecker(val nulls: Set[String]) {
   
   private def ann(node: MethodNode, idx: Int): Seq[AnnotationNode] = {
     val a1 = if (node.visibleParameterAnnotations == null) Nil else paramAnn(
-      node.visibleAnnotableParameterCount, node.visibleParameterAnnotations, idx, Util.simplifiedSignatureParams(node.desc).length
+      node.visibleAnnotableParameterCount, node.visibleParameterAnnotations, idx, Bytecode.simplifiedDescriptorParams(node.desc).length
     )
     val a2 = if (node.invisibleParameterAnnotations == null) Nil else paramAnn(
-      node.invisibleAnnotableParameterCount, node.invisibleParameterAnnotations, idx, Util.simplifiedSignatureParams(node.desc).length
+      node.invisibleAnnotableParameterCount, node.invisibleParameterAnnotations, idx, Bytecode.simplifiedDescriptorParams(node.desc).length
     )
     Seq.newBuilder.addAll(a1).addAll(a2).result()
   }

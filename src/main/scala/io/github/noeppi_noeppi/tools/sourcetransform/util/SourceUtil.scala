@@ -1,18 +1,19 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.util
 
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{InheritanceMap, LambdaInfo, MethodInfo}
-import org.eclipse.jdt.core.dom._
+import io.github.noeppi_noeppi.tools.sourcetransform.util.inheritance.InheritanceMap
+import org.objectweb.asm.Type
+import org.eclipse.jdt.core.dom.{Type => _, *}
 
 import java.nio.ByteBuffer
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path}
 import scala.annotation.tailrec
-import scala.jdk.StreamConverters._
+import scala.jdk.StreamConverters.*
 
 object SourceUtil {
 
-  def getJavaSources(base: Path): List[String] = {
-    Files.walk(base.toAbsolutePath.normalize()).toScala(List)
+  def getJavaSources(base: Path): Seq[String] = {
+    Files.walk(base.toAbsolutePath.normalize()).toScala(Seq)
       .filter(p => Files.isRegularFile(p))
       .filter(p => p.getFileName.toString.endsWith(".java"))
       .filter(p => p.getFileName.toString != "package-info.java")
@@ -35,15 +36,41 @@ object SourceUtil {
     parser.setSource(array)
     parser
   }
-  
-  private val types = Set("Z", "B", "C", "S", "I", "J", "F", "D", "V")
-  
-  def internal(binary: String): String = {
-    if (types.contains(binary.dropWhile(_ == '['))) {
-      binary
+
+  def internal(binding: ITypeBinding): Option[String] = {
+    if (binding == null) return None
+    // Translate a type binding into a type descriptor
+    val erasure = binding.getErasure
+    if (erasure == null) return None
+    if (erasure.isArray) {
+      Some(("[" * erasure.getDimensions) + internal(erasure.getElementType))
+    } else if (erasure.isPrimitive) erasure.getName match {
+      case "boolean" => Some("Z")
+      case "byte" => Some("B")
+      case "char" => Some("C")
+      case "short" => Some("S")
+      case "int" => Some("I")
+      case "long" => Some("J")
+      case "float" => Some("F")
+      case "double" => Some("D")
+      case "void" => Some("V")
+      case _ => None
+    } else if (erasure.isNullType) {
+      Some("L" + Bytecode.ROOT + ";")
     } else {
-      binary.takeWhile(_ == '[') + "L" + binary.dropWhile(_ == '[').replace('.', '/') + ";"
+      Option(erasure.getBinaryName)
+        .map(desc => "L" + desc.replace('.', '/') + ";")
     }
+  }
+  
+  def internalCls(binding: ITypeBinding): Option[String] = internal(binding) match {
+    case Some(binary) =>
+      val binaryType = Type.getType(binary)
+      binaryType.getSort match {
+        case Type.OBJECT => Some(binaryType.getInternalName)
+        case _ => None
+      }
+    case None => None
   }
   
   @tailrec
@@ -61,31 +88,34 @@ object SourceUtil {
   }
   
   def importedClassesFromPkg(inheritance: InheritanceMap, pkg: String): Set[String] = {
-    inheritance.getClasses(pkg).map(_.substring(pkg.length)).filter(!_.contains("$"))
+    inheritance.getPackageMembers(pkg).map(_.substring(pkg.length)).filter(!_.contains("$"))
   }
-  
+
   def importedClassesFromCls(inheritance: InheritanceMap, cls: String): Set[String] = {
     val pkg = if (cls.contains("/")) cls.substring(0, cls.lastIndexOf('/')) else ""
-    inheritance.getClasses(pkg).filter(_.startsWith(cls + "$")).map(_.substring(cls.length + 1))
+    inheritance.getPackageMembers(pkg).filter(_.startsWith(cls + "$")).map(_.substring(cls.length + 1))
       .filter(!_.contains("$")).filter(_.toIntOption.isEmpty)
   }
   
-  def methodInfo(binding: IMethodBinding): Either[MethodInfo, String] = {
+  def methodInfo(binding: IMethodBinding): Either[Bytecode.Method, String] = {
     if (binding == null) return Right("Null binding")
     val cls = binding.getDeclaringClass
     if (cls == null) return Right("No declaring class for method found.")
     if (cls.getBinaryName == null) return Right("Failed to get binary name")
     val name = if (binding.isConstructor) "<init>" else binding.getName
     SourceHacks.getBinaryDescriptor(binding) match {
-      case Some(sig) => Left(MethodInfo(cls.getBinaryName.replace('.', '/'), name, sig))
+      case Some(sig) => Left(Bytecode.Method(cls.getBinaryName.replace('.', '/'), name, sig))
       case None =>
         if (binding.getReturnType.getBinaryName == null) return Right("Failed to get return type binding")
         if (binding.getParameterTypes.exists(str => str.getBinaryName == null)) return Right("Failed to get signature binding")
-        val ret = if (binding.isConstructor) "V" else SourceUtil.internal(binding.getReturnType.getBinaryName)
-        val desc = "(" + binding.getParameterTypes.map(str => SourceUtil.internal(str.getBinaryName)).mkString("") + ")" + ret
-        Left(MethodInfo(cls.getBinaryName.replace('.', '/'), name, desc))
+        val ret = if (binding.isConstructor) "V" else SourceUtil.internal(binding.getReturnType)
+        val desc = "(" + binding.getParameterTypes.map(ptype => SourceUtil.internal(ptype)).mkString("") + ")" + ret
+        Left(Bytecode.Method(cls.getBinaryName.replace('.', '/'), name, desc))
     }
   }
   
-  def getLambdaImplId(binding: IMethodBinding): LambdaInfo = SourceHacks.getLambdaImplId(binding)
+  def getLambdaImplId(binding: IMethodBinding): Option[Lambda] = SourceHacks.getLambdaImplId(binding)
+  def wrapLambda(lambda: Bytecode.Lambda): Lambda = Lambda(lambda.cls, lambda.lambdaId)
+  
+  case class Lambda(cls: String, lambdaId: String)
 }

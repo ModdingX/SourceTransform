@@ -1,17 +1,56 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.transform
 
-object TransformUtil {
+import io.github.noeppi_noeppi.tools.sourcetransform.transform.data.TransformTarget
+import io.github.noeppi_noeppi.tools.sourcetransform.util.Bytecode
+import io.github.noeppi_noeppi.tools.sourcetransform.util.inheritance.InheritanceMap
+import org.objectweb.asm.Type
 
-  def createTransformer(transformers: List[ConfiguredTransformer])(name: String, target: TransformTarget, predicate: ConfiguredTransformer => Boolean, action: String => Boolean): Option[String] = {
-    for (ct <- transformers if predicate(ct)) {
-      ct.transform(name, target) match {
-        case Some(transformed) =>
-          if (action(transformed)) {
-            return Some(transformed)
-          }
-        case None =>
+import scala.annotation.tailrec
+
+object TransformUtil {
+  
+  class AppliedTransformer private[TransformUtil] (inheritance: InheritanceMap, transformers: Seq[ConfiguredTransformer]) {
+
+    def apply(name: String, target: TransformTarget, filter: ConfiguredTransformer => Boolean, action: String => Boolean): Option[String] = {
+      for (ct <- transformers if filter(ct)) {
+        ct.transform(name, target, inheritance) match {
+          case Some(newName) =>
+            if (action(newName)) {
+              return Some(newName)
+            }
+          case None =>
+        }
       }
+      None
     }
-    None
+
+    def isUtilityClass(cls: String, forType: String): Boolean = {
+      val members: Set[Bytecode.Member] = inheritance.getClassMembers(cls)
+      val memberDescriptors: Set[String] = members.flatMap(m => inheritance.getDescriptor(m))
+      val memberCount = memberDescriptors.count(desc => desc.contains(forType))
+      (members.size / memberCount.toDouble) <= 5
+    }
+
+    def isClassRelatedTo(cls: String, forTypes: Set[String]): Boolean = {
+      forTypes.exists(forType => inheritance.isSubType("L" + cls + ";", forType) || isUtilityClass(cls, forType))
+    }
+  }
+
+  def createTransformer(inheritance: InheritanceMap, transformers: Seq[ConfiguredTransformer]): AppliedTransformer = {
+    new AppliedTransformer(inheritance, transformers)
+  }
+
+  def getParamTypeForTransformerMatch(desc: String, idx: Int): String = {
+    @tailrec
+    def typeForMatch(t: Type): String = t.getSort match {
+      case Type.ARRAY => typeForMatch(t.getElementType)
+      case Type.METHOD => throw new IllegalArgumentException("Method type as descriptor arg")
+      case _ => t.getDescriptor
+    }
+
+    val args = Type.getMethodType(desc).getArgumentTypes.toSeq
+    
+    if (args.indices.contains(idx)) typeForMatch(args(idx))
+    else "V"
   }
 }

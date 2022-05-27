@@ -1,15 +1,22 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.jstype
 
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.InheritanceMap
+import io.github.noeppi_noeppi.tools.sourcetransform.util.Bytecode
 import io.github.noeppi_noeppi.tools.sourcetransform.util.cls.ClassLocator
+import io.github.noeppi_noeppi.tools.sourcetransform.util.inheritance.InheritanceMap
 import io.github.noeppi_noeppi.tools.sourcetransform.util.signature.SignatureNode
 
 import java.io.Writer
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.given
 
-class JsEnv(val inheritance: InheritanceMap, private val classes: Seq[String], val classpath: ClassLocator,
-            private val classMap: Map[String, String], val tsWriter: Writer, val nulls: NullChecker) {
-  
+class JsEnv(
+             val inheritance: InheritanceMap,
+             private val classes: Seq[String],
+             val classpath: ClassLocator,
+             private val classMap: Map[String, String],
+             val tsWriter: Writer,
+             val nulls: NullChecker
+           ) {
+
   private lazy val allSupported: Set[String] = classes.flatMap(cls => {
     val builder = Set.newBuilder[String]
     builder.addOne(cls)
@@ -17,12 +24,12 @@ class JsEnv(val inheritance: InheritanceMap, private val classes: Seq[String], v
     builder.addAll(inheritance.classes.keySet.filter(_.startsWith(cls + "$")))
     builder.result()
   }).toSet
-  
+
   def isSource(cls: String): Boolean = classes.contains(cls)
   def supports(cls: String): Boolean = allSupported.contains(cls)
-  
+
   def plainName(cls: String): String = classMap.getOrElse(cls, "Java_" + cls.replace('/', '_'))
-  
+
   def typeVars(sig: SignatureNode): String = {
     if (sig == null || sig.formalTypeParameters.isEmpty) {
       ""
@@ -39,7 +46,7 @@ class JsEnv(val inheritance: InheritanceMap, private val classes: Seq[String], v
         .mkString("<", ",", ">")
     }
   }
-  
+
   def typeVarDefs(sig: SignatureNode): String = {
     if (sig == null || sig.formalTypeParameters.isEmpty) {
       ""
@@ -49,18 +56,18 @@ class JsEnv(val inheritance: InheritanceMap, private val classes: Seq[String], v
         .mkString("<", ",", ">")
     }
   }
-  
+
   def jsTypeField(desc: String, sig: SignatureNode, nullable: Boolean): String = {
     val realSig = if (sig == null) null else sig.superClass; // Weird but field type seems to be stored in the superClass property.
     jsType(desc, realSig, nullable)
   }
-  
+
   def jsType(desc: String, sig: SignatureNode, nullable: Boolean): String = if (nullable) {
     jsType(desc, sig) + "|null"
   } else {
     jsType(desc, sig)
   }
-  
+
   private def jsType(desc: String, sig: SignatureNode): String = {
     if (sig != null) jsTypeSig(sig) match {
       case Some(t) => return t
@@ -68,7 +75,7 @@ class JsEnv(val inheritance: InheritanceMap, private val classes: Seq[String], v
     }
     jsTypeRaw(desc)
   }
-  
+
   private def jsTypeRaw(desc: String): String = desc match {
     case "V" => "void"
     case "Z" => "boolean"
@@ -77,7 +84,7 @@ class JsEnv(val inheritance: InheritanceMap, private val classes: Seq[String], v
     case t if t.startsWith("L") && t.endsWith(";") => jsClass(t.substring(1, t.length - 1))
     case _ => throw new IllegalArgumentException("Invalid java type: " + desc)
   }
-  
+
   private def jsTypeSig(sig: SignatureNode): Option[String] = {
     if (sig.baseType != 0 && sig.baseType != 'L') {
       return Some(sig.baseType match {
@@ -111,9 +118,9 @@ class JsEnv(val inheritance: InheritanceMap, private val classes: Seq[String], v
         .mkString("<", ",", ">")
     }
   }
-  
+
   def jsClass(cls: String): String = cls match {
-    case InheritanceMap.ROOT => "any"
+    case Bytecode.ROOT => "any"
     case "java/lang/String" => "string"
     case "java/util/List" => "Array"
     case _ if cls.contains('$') => plainName(cls.substring(0, cls.indexOf('$'))) + cls.substring(cls.indexOf('$')).replace('$', '.')

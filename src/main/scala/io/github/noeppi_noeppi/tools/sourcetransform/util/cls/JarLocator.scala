@@ -11,9 +11,9 @@ class JarLocator(path: Path) extends ClassIndex {
   private val fs: FileSystem = FileSystems.newFileSystem(path, null.asInstanceOf[ClassLoader])
   private val jmod: Boolean = path.getFileName.toString.endsWith(".jmod")
 
-  override def allClasses: List[String] = {
+  override def allClasses: Seq[String] = {
     val basePath = fs.getPath(if (jmod) "/classes/" else "/").toAbsolutePath.normalize()
-    Files.walk(basePath).toScala(List)
+    Files.walk(basePath).toScala(Seq)
       .filter(p => Files.isRegularFile(p))
       .filter(p => p.getFileName.toString.endsWith(".class"))
       .filter(p => p.getFileName.toString != "package-info.class")

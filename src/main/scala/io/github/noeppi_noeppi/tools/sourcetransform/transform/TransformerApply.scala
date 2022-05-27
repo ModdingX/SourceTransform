@@ -1,14 +1,16 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.transform
 
 import com.google.gson.JsonObject
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.{FieldInfo, InheritanceMap, MethodInfo, ParamInfo}
-import io.github.noeppi_noeppi.tools.sourcetransform.util.Util
+import io.github.noeppi_noeppi.tools.sourcetransform.transform.data.TransformTarget
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{Bytecode, Util}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.inheritance.{InheritanceIO, InheritanceMap}
 import joptsimple.util.PathConverter
 import joptsimple.{OptionException, OptionParser}
 import net.minecraftforge.srgutils.IMappingFile
+import org.objectweb.asm.Opcodes
 
 import java.nio.file.Files
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.given
 
 object TransformerApply {
 
@@ -23,7 +25,10 @@ object TransformerApply {
     val set = try {
       options.parse(args: _*)
     } catch {
-      case e: OptionException => System.err.println("Option exception: " + e.getMessage); options.printHelpOn(System.err); Util.exit(0)
+      case e: OptionException =>
+        System.err.println("Option exception: " + e.getMessage)
+        options.printHelpOn(System.err)
+        Util.exit(0)
     }
     if (!set.has(specInheritance) || !set.has(specOutput)) {
       if (!set.has(specInheritance)) System.out.println("Missing required option: " + specInheritance)
@@ -35,18 +40,18 @@ object TransformerApply {
       System.exit(1)
     } else {
       val inheritanceReader = Files.newBufferedReader(set.valueOf(specInheritance))
-      val inheritance = InheritanceMap.read(inheritanceReader)
+      val inheritance = InheritanceIO.read(inheritanceReader)
       inheritanceReader.close()
-      
+
       val transformer = if (set.has(specTransformer)) {
         val transformerReader = Files.newBufferedReader(set.valueOf(specTransformer))
         val transformerJson = Util.GSON.fromJson(transformerReader, classOf[JsonObject])
         transformerReader.close()
         TransformerReader.read(transformerJson)
       } else {
-        Nil
+        Seq()
       }
-      
+
       val mappings = if (set.has(specMappings)) {
         val mappingInput = Files.newInputStream(set.valueOf(specMappings))
         val mappings = IMappingFile.load(mappingInput)
@@ -55,94 +60,96 @@ object TransformerApply {
       } else {
         None
       }
-      
+
       val mappedTransformer = if (set.has(specRemap) && mappings.isDefined) {
         val reversed = mappings.get.reverse()
         transformer.map(_.remap(reversed))
       } else {
         transformer
       }
-      
-      val applied = apply(inheritance, mappedTransformer, mappings, set.has(specNoParam))
-      applied.write(set.valueOf(specOutput), IMappingFile.Format.TSRG2, false)
+
+      val applied = inheritance.addData(apply(inheritance, mappedTransformer, mappings, !set.has(specNoParam)))
+      applied.write(set.valueOf(specOutput).toAbsolutePath.normalize(), IMappingFile.Format.TSRG2, false)
     }
   }
-  
-  def apply(inheritance: InheritanceMap, transformers: List[ConfiguredTransformer], mappings: Option[IMappingFile], noparam: Boolean): IMappingFile = {
-    val transformation = new Transformation(inheritance, mappings)
-    
-    val transform = TransformUtil.createTransformer(transformers) _
 
-    def checkUtilityType(cls: String, forType: String): Boolean = {
-      val members = inheritance.getMemberSignatures(cls)
-      val memberCount = members.count(m => m.contains(forType))
-      (members.size / memberCount.toDouble) <= 5
-    }
+  def apply(inheritance: InheritanceMap, transformers: Seq[ConfiguredTransformer], mappings: Option[IMappingFile], includeParams: Boolean): IMappingFile = {
+    val transformation = new TransformationCollector(inheritance, mappings)
+
+    val transform = TransformUtil.createTransformer(inheritance, transformers)
     
-    def checkClassFor(cls: String, forTypes: Set[String]): Boolean = {
-      forTypes.exists(forType => inheritance.isSubType("L" + cls + ";", forType) || checkUtilityType(cls, forType))
+    def findParamFromMappings(method: Bytecode.Method, idx: Int): Option[String] = mappings match {
+      case Some(mf) => Option(mf.getClass(method.cls)) match {
+        case Some(cls) => Option(cls.getMethod(method.name, method.desc)) match {
+          case Some (md) => md.getParameters.asScala.find(p => p.getIndex == idx).map(p => p.getMapped)
+          case None => None
+        }
+        case None => None
+      }
+      case None => None
     }
 
-    def findMappingParam(info: ParamInfo): Option[String] = {
-      mappings
-        .flatMap(mf => Option(mf.getClass(info.method.cls)))
-        .flatMap(cls => Option(cls.getMethod(info.method.name, info.method.signature)))
-        .flatMap(m => m.getParameters.asScala.find(p => p.getIndex == info.idx))
-        .map(p => p.getMapped)
-    }
-    
-    def processSubClass(cls: String): Boolean = {
-      val result = transform(cls, TransformTarget.CHILD_CLASS, t => t.baseType.nonEmpty && t.matchBaseClass(inheritance, cls), n => transformation.transformClass(cls, n))
-      result.isDefined
-    }
-    
-    def processUtilityClass(cls: String): Unit = {
-      transform(cls, TransformTarget.UTILITY_CLASS, t => t.baseType.exists(e => checkUtilityType(cls, e)), n => transformation.transformClass(cls, n))
-    }
-    
-    def processField(info: FieldInfo): Unit = {
-      transform(info.name, TransformTarget.FIELD, t => {
-        t.matchBaseField(info.name) && (t.matchTypeSignature(inheritance, info.fieldType) || checkClassFor(info.cls, t.baseType))
-      }, n => transformation.transformField(info, n))
-    }
-    
-    def processMethod(info: MethodInfo): Unit = {
-      transform(info.name, TransformTarget.METHOD, t => {
-        t.matchBaseMethod(info.name, info.signature) && (t.matchTypeSignature(inheritance, info.signature) || checkClassFor(info.cls, t.baseType))
-      }, n => transformation.transformMethod(info, n))
-    }
-    
-    def processParam(info: ParamInfo): Unit = {
-      inheritance.getOverridden(info.method)
-        .flatMap(m => findMappingParam(ParamInfo(m, info.idx, info.name)))
+    def processAsSubClass(cls: String): Boolean = transform(
+      cls, TransformTarget.CHILD_CLASS,
+      ct => ct.baseTypes.nonEmpty && ct.matchBaseClass(inheritance, cls),
+      newName => transformation.transformClass(cls, newName)
+    ).isDefined
+
+    def processAsUtilityClass(cls: String): Unit = transform(
+      cls, TransformTarget.UTILITY_CLASS,
+      ct => ct.baseTypes.exists(base => transform.isUtilityClass(cls, base)),
+      newName => transformation.transformClass(cls, newName)
+    )
+
+    def processField(field: Bytecode.Field, desc: String): Unit = transform(
+      field.name, TransformTarget.FIELD,
+      ct => ct.matchBaseField(field.name) && (ct.matchTypeDescriptor(inheritance, desc) || transform.isClassRelatedTo(field.cls, ct.baseTypes)),
+      newName => transformation.transformField(field, newName)
+    )
+
+    def processMethod(method: Bytecode.Method): Unit = transform(
+      method.name, TransformTarget.METHOD,
+      ct => ct.matchBaseMethod(method.name, method.desc) && (ct.matchTypeDescriptor(inheritance, method.desc) || transform.isClassRelatedTo(method.cls, ct.baseTypes)),
+      newName => transformation.transformMethod(method, newName)
+    )
+
+    def processParam(method: Bytecode.Method, idx: Int): Unit = {
+      // Synthetic methods are checked last, methods from classes precede over methods from interfaces
+      def sortKey(method: Bytecode.Method) = (inheritance.is(method, Opcodes.ACC_SYNTHETIC), inheritance.isInterface(method.cls))
+      
+      inheritance.getOverriddenMethods(method)
+        .toSeq.sortBy(sortKey)
+        .flatMap(overriddenMethod => findParamFromMappings(overriddenMethod, idx))
         .headOption match {
-        case Some(name) => transformation.transformParam(info, name)
-        case None => transform(info.name, TransformTarget.PARAMETER, t => {
-          t.matchBaseMethod(info.name, info.method.signature) && (t.matchTypeSignature(inheritance, Util.getParamTypeForTransformerMatch(info.method.signature, info.idx)) || checkClassFor(info.method.cls, t.baseType))
-        }, n => transformation.transformParam(info, n))
+          case Some(newName) => transformation.transformParam(method, idx, newName)
+          case None => inheritance.getParam(method, idx) match {
+            case Some(oldName) => transform(
+              oldName, TransformTarget.PARAMETER,
+              ct => ct.matchBaseMethod(method.name, method.desc) && (ct.matchTypeDescriptor(inheritance, TransformUtil.getParamTypeForTransformerMatch(method.desc, idx)) || transform.isClassRelatedTo(method.cls, ct.baseTypes)),
+              newName => transformation.transformParam(method, idx, newName))
+            case None =>
+          }
       }
     }
-    
-    inheritance.sourceClasses.foreach(cls => {
-      if (!processSubClass(cls)) {
-        processUtilityClass(cls)
+
+    for (cls: String <- inheritance.sourceClasses) {
+      if (!processAsSubClass(cls)) {
+        processAsUtilityClass(cls)
       }
-    })
-    
-    inheritance.fields.foreach(f => {
-      processField(f)
-    })
-    
-    inheritance.methods.foreach(m => {
-      processMethod(m)
-    })
-    
-    if (!noparam) {
-      inheritance.params.foreach(p => {
-        processParam(p)
-      })
+      for (fd: Bytecode.Field <- inheritance.getClassFields(cls)) inheritance.getDescriptor(fd) match {
+        case Some(desc) => processField(fd, desc)
+        case None =>
+      }
+      for (md: Bytecode.Method <- inheritance.getClassMethods(cls)) {
+        processMethod(md)
+        if (includeParams) {
+          for (idx <- 0 until Bytecode.paramCount(md.desc)) {
+            processParam(md, idx)
+          }
+        }
+      }
     }
-    
-    transformation.build(noparam)
+
+    transformation.build(includeParams)
   }
 }

@@ -1,6 +1,5 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.util
 
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.LambdaInfo
 import org.eclipse.jdt.core.dom.IMethodBinding
 
 // Hacky reflection to get more properties from JDT
@@ -30,18 +29,18 @@ object SourceHacks {
   // Should be lambda$n with n = unique id for the lambda that (hopefully) matches bytecode
   // However the compiler seems to merge identical lambdas together into one lambda method.
   // So this id needs to be matched with an inheritance map to find the correct method to use
-  def getLambdaImplId(binding: IMethodBinding): LambdaInfo = {
-    if (binding == null) return null
+  def getLambdaImplId(binding: IMethodBinding): Option[SourceUtil.Lambda] = {
+    if (binding == null) return None
     // Hacky way to match lambdas
     try {
       val internalCls = Class.forName("org.eclipse.jdt.core.dom.MethodBinding$LambdaMethod")
-      if (!internalCls.isAssignableFrom(binding.getClass)) return null
+      if (!internalCls.isAssignableFrom(binding.getClass)) return None
       val field = internalCls.getDeclaredField("implementation")
       field.setAccessible(true)
       val impl = field.get(binding).asInstanceOf[IMethodBinding]
-      LambdaInfo(impl.getDeclaringClass.getBinaryName.replace('.', '/'), impl.getName)
+      Some(SourceUtil.Lambda(impl.getDeclaringClass.getBinaryName.replace('.', '/'), impl.getName))
     } catch {
-      case _: ReflectiveOperationException | _: NoClassDefFoundError => null
+      case _: ReflectiveOperationException | _: NoClassDefFoundError => None
     }
   }
 }

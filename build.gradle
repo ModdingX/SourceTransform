@@ -15,14 +15,14 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.scala-lang:scala-library:2.13.8'
-    implementation 'org.scala-lang.modules:scala-parser-combinators_2.13:2.1.1'
+    implementation 'org.scala-lang:scala3-library_3:3.1.2'
+    implementation 'org.scala-lang.modules:scala-parser-combinators_3:2.1.1'
     implementation 'org.apache.commons:commons-text:1.9'
     implementation 'com.google.code.gson:gson:2.9.0'
-    implementation 'net.minecraftforge:srgutils:0.4.9'
-    implementation 'org.ow2.asm:asm:9.2'
-    implementation 'org.ow2.asm:asm-tree:9.2'
-    implementation 'org.ow2.asm:asm-util:9.2'
+    implementation 'net.minecraftforge:srgutils:0.4.11'
+    implementation 'org.ow2.asm:asm:9.3'
+    implementation 'org.ow2.asm:asm-tree:9.3'
+    implementation 'org.ow2.asm:asm-util:9.3'
     implementation 'net.sf.jopt-simple:jopt-simple:5.0.4'
     implementation 'org.eclipse.jdt:org.eclipse.jdt.core:3.29.0'
     implementation 'org.parchmentmc:feather:1.0.0.3'
@@ -70,7 +70,6 @@ publishing {
             groupId = project.group
             artifactId = project.name
             version = project.version
-            artifact fatjar
             artifact sourcesJar
             pom {
                 licenses {
@@ -84,7 +83,7 @@ publishing {
     }
     repositories {
         maven {
-            url '../MinecraftUtilities/maven'
+            url '../moddingx/maven'
         }
     }
 }

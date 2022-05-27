@@ -1,71 +1,77 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.local
 
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.InheritanceMap
-import io.github.noeppi_noeppi.tools.sourcetransform.transform.{ConfiguredTransformer, TransformTarget, TransformUtil}
-import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassTrackingVisitor, SourceUtil}
-import org.eclipse.jdt.core.dom._
+import io.github.noeppi_noeppi.tools.sourcetransform.transform.{ConfiguredTransformer, TransformUtil}
+import io.github.noeppi_noeppi.tools.sourcetransform.transform.data.TransformTarget
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{Bytecode, ClassTrackingVisitor, SourceUtil}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.inheritance.InheritanceMap
+import org.eclipse.jdt.core.dom.{ASTNode, IBinding, ITypeBinding, IVariableBinding, Initializer, MethodDeclaration, Modifier, SimpleName, SingleVariableDeclaration, VariableDeclaration, VariableDeclarationFragment}
 
 import scala.collection.mutable
 
-class SourceVisitor(private val inheritance: InheritanceMap, transformers: List[ConfiguredTransformer], renames: mutable.Set[(Int, Int, String)]) extends ClassTrackingVisitor {
-  
+class SourceVisitor(inheritance: InheritanceMap, transform: TransformUtil.AppliedTransformer, renames: mutable.Set[(Int, Int, String)]) extends ClassTrackingVisitor {
+
   private val methodStack = mutable.Stack[(String, String)]()
-  private val params = mutable.Map[String, String]()
+  private val renamedParams = mutable.Map[String, String]()
   
-  private val transform = TransformUtil.createTransformer(transformers) _
-
-  private def checkUtilityType(cls: String, forType: String): Boolean = {
-    val members = inheritance.getMemberSignatures(cls)
-    val memberCount = members.count(m => m.contains(forType))
-    (members.size / memberCount.toDouble) <= 5
-  }
-
-  private def checkClassFor(cls: String, forTypes: Set[String]): Boolean = {
-    forTypes.exists(forType => inheritance.isSubType("L" + cls + ";", forType) || checkUtilityType(cls, forType))
+  def renameNode(node: ASTNode, binding: IBinding, typeBinding: => ITypeBinding, name: String): Unit = {
+    if (methodStack.nonEmpty) {
+      binding match {
+        case binding: IVariableBinding if binding.getKind == IBinding.VARIABLE && !binding.isField && !binding.isParameter && !binding.isEnumConstant && !binding.isRecordComponent =>
+          val renamed = rename(binding.getKey, name, Option(typeBinding).flatMap(bind => SourceUtil.internal(bind)))
+          if (renamed != name) {
+            renames.addOne((node.getStartPosition, node.getLength, renamed))
+          }
+        case _ =>
+      }
+    }
   }
   
-  private def rename(key: String, name: String, variableType: String): String = {
-    params.get(key) match {
+  def rename(key: String, name: String, variableType: Option[String]): String = {
+    renamedParams.get(key) match {
       case Some(renamed) => renamed
       case None =>
-        transform(name, TransformTarget.LOCAL, transformer => {
-          if (methodStack.nonEmpty && !transformer.matchBaseMethod(methodStack.head._1, methodStack.head._2))  {
-            false
-          } else if (variableType != null && !transformer.matchTypeSignature(inheritance, variableType)) {
-            false
-          } else if (variableType == null && !transformer.matchBaseClass(inheritance, currentClass()) && !checkClassFor(currentClass(), transformer.baseType)) {
-            false
-          } else {
-            true
-          }
-        }, _ => true) match {
-          case Some(renamed) => params.put(key, renamed); renamed
-          case None => params.put(key, name); name
+        transform(
+          name, TransformTarget.LOCAL,
+          ct => checkTransformer(ct, methodStack.headOption, variableType),
+          _ => true
+        ) match {
+          case Some(renamed) =>
+            renamedParams.put(key, renamed)
+            renamed
+          case None =>
+            renamedParams.put(key, name)
+            name
         }
+    }
+  }
+  
+  def checkTransformer(ct: ConfiguredTransformer, currentMethod: Option[(String, String)], variableType: Option[String]): Boolean = {
+    currentMethod match {
+      case Some((name, desc)) if !ct.matchBaseMethod(name, desc) => return false
+      case _ =>
+    }
+    variableType match {
+      case Some(vType) => ct.matchTypeDescriptor(inheritance, vType)
+      case None => ct.matchBaseClass(inheritance, currentClass()) || transform.isClassRelatedTo(currentClass(), ct.baseTypes)
     }
   }
 
   override def visit(node: MethodDeclaration): Boolean = {
-    val binding = node.resolveBinding()
-    if (binding == null) {
-      System.err.println("Failed to resolve method binding: Skipping method: " + node.getName.getFullyQualifiedName + " (in " + currentClass() + ")")
-      // The stack is popped in the endVisit method. So we need to push a dummy element
-      // even if we skip the method.
-      methodStack.push(("<invalid>", "()V"))
-      false
-    } else {
-      val name = if (node.isConstructor) "<init>" else node.getName.getIdentifier
-      val ret = if (node.isConstructor) "V" else SourceUtil.internal(binding.getReturnType.getBinaryName)
-      val desc = "(" + binding.getParameterTypes.map(str => SourceUtil.internal(str.getBinaryName)).mkString("") + ")" + ret
-      methodStack.push((name, desc))
-      true
+    SourceUtil.methodInfo(node.resolveBinding()) match {
+      case Left(Bytecode.Method(_, name, desc)) =>
+        methodStack.push((name, desc))
+        true
+      case Right(err) =>
+        System.err.println(err + ": " + node.getName.getFullyQualifiedName + " (in " + currentClass() + ")")
+        // Dummy element to be popped in endVisit
+        methodStack.push(("<invalid>", "()V"))
+        false
     }
   }
 
   override def endVisit(node: MethodDeclaration): Unit = {
     methodStack.pop()
   }
-
 
   override def visit(node: Initializer): Boolean = {
     if ((node.getModifiers & Modifier.STATIC) != 0) {
@@ -81,36 +87,17 @@ class SourceVisitor(private val inheritance: InheritanceMap, transformers: List[
   }
 
   override def visit(node: SimpleName): Boolean = {
-    if (methodStack.nonEmpty) {
-      node.resolveBinding() match {
-        case binding: IVariableBinding if binding.getKind == IBinding.VARIABLE && !binding.isField
-          && !binding.isParameter && !binding.isEnumConstant && !binding.isRecordComponent =>
-          val typeBinding = Option(node.resolveTypeBinding())
-          val renamed = rename(binding.getKey, node.getIdentifier, typeBinding.map(str => SourceUtil.internal(str.getBinaryName)).orNull)
-          if (renamed != node.getIdentifier) renames.addOne((node.getStartPosition, node.getLength, renamed))
-        case null => System.err.println("Failed to resolve name binding: " + node.getFullyQualifiedName + " (in " + currentClass() + "#" + methodStack.head._1 + methodStack.head._2 + ")")
-        case _ =>
-      }
-    }
+    renameNode(node, node.resolveBinding(), node.resolveTypeBinding(), node.getIdentifier)
     true
   }
-  
+
+
   override def visit(node: SingleVariableDeclaration): Boolean = variableDeclaration(node)
   override def visit(node: VariableDeclarationFragment): Boolean = variableDeclaration(node)
 
   private def variableDeclaration(node: VariableDeclaration): Boolean = {
-    if (methodStack.nonEmpty) {
-      val binding = node.resolveBinding()
-      if (binding == null) {
-        System.err.println("Failed to resolve variable binding: " + node.getName.getFullyQualifiedName + " (in " + currentClass() + "#" + methodStack.head._1 + methodStack.head._2 + ")")
-      } else if (binding.getKind == IBinding.VARIABLE && !binding.isField && !binding.isParameter
-        && !binding.isEnumConstant && !binding.isRecordComponent) {
-        val typeBinding = Option(node.getName.resolveTypeBinding())
-        val renamed = rename(binding.getKey, node.getName.getIdentifier, typeBinding.map(str => SourceUtil.internal(str.getBinaryName)).orNull)
-        if (renamed != node.getName.getIdentifier) renames.addOne((node.getName.getStartPosition, node.getName.getLength, renamed))
-      }
-    }
-    // Don't descend into it, we already have it renamed
+    renameNode(node.getName, node.resolveBinding(), node.getName.resolveTypeBinding(), node.getName.getIdentifier)
+    // Don't visit children, already renamed
     false
   }
 }

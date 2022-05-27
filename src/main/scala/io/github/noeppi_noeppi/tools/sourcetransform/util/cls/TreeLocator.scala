@@ -9,8 +9,8 @@ class TreeLocator(thePath: Path) extends ClassIndex {
   
   private val path: Path = thePath.toAbsolutePath.normalize()
   
-  override def allClasses: List[String] = {
-    Files.walk(path).toScala(List)
+  override def allClasses: Seq[String] = {
+    Files.walk(path).toScala(Seq)
       .filter(p => Files.isRegularFile(p))
       .filter(p => p.getFileName.toString.endsWith(".class"))
       .filter(p => p.getFileName.toString != "package-info.class")

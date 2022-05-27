@@ -1,87 +1,75 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.transform
 
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.InheritanceMap
-import io.github.noeppi_noeppi.tools.sourcetransform.util.Util
+import io.github.noeppi_noeppi.tools.sourcetransform.transform.data.{TransformMember, TransformTarget, Transformer}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.{Bytecode, Util}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.inheritance.InheritanceMap
 import net.minecraftforge.srgutils.IMappingFile
 
-class ConfiguredTransformer(private val transformer: Transformer, private val targets: Set[TransformTarget], val baseType: Set[String], val baseMember: Set[Member], val exactType: Boolean) {
-  
-  def transform(name: String, target: TransformTarget): Option[String] = {
-    if (targets.contains(target)) {
-      target match {
-        case TransformTarget.CHILD_CLASS | TransformTarget.UTILITY_CLASS =>
-          val className = if (name.contains("/")) name.substring(name.lastIndexOf('/') + 1) else name
-          val packageName = if (name.contains("/")) Some(name.substring(0, name.lastIndexOf('/'))) else None
-          val sourceName = if (className.contains("$")) className.substring(className.lastIndexOf('$') + 1) else className
-          val enclosingName = if (className.contains("$")) Some(className.substring(0, className.lastIndexOf('$'))) else None
-          if (sourceName.toIntOption.isDefined) {
-            // Class has no name in source code, we won't rename it.
-            None
-          } else {
-            transformer.applyOn(className).map(transformed => packageName.map(_ + "/").getOrElse("") + enclosingName.map(_ + "$").getOrElse("") + transformed)
-          }
-        case _ => transformer.applyOn(name)
+import scala.util.matching.Regex
+
+class ConfiguredTransformer(private val transformer: Transformer, private val targets: Set[TransformTarget], val baseTypes: Set[String], val baseMember: Set[TransformMember], val exactType: Boolean) {
+
+  def transform(name: String, target: TransformTarget, inheritance: InheritanceMap): Option[String] = {
+    target match {
+      case _ if !targets.contains(target) => None
+      case TransformTarget.CHILD_CLASS | TransformTarget.UTILITY_CLASS => inheritance.getSourceName(name) match {
+        case Some(sourceName) => transformer.applyTo(sourceName)
+        case None => None
       }
-    } else {
-      None
+      case _ => transformer.applyTo(name)
     }
   }
-  
+
   def remap(mappings: IMappingFile): ConfiguredTransformer = {
     new ConfiguredTransformer(
       transformer.remap(mappings), targets,
-      baseType.map(e => mappings.remapDescriptor(e)),
+      baseTypes.map(e => mappings.remapDescriptor(e)),
       baseMember, exactType
     )
   }
-  
+
   def matchBaseClass(inheritance: InheritanceMap, testCls: String): Boolean = {
     matchBaseType(inheritance, "L" + testCls + ";")
   }
-  
+
   def matchBaseType(inheritance: InheritanceMap, testType: String): Boolean = {
-    if (baseType.isEmpty) {
+    if (baseTypes.isEmpty) {
       true
     } else {
-      if (exactType) {
-        baseType.contains(testType)
-      } else {
-        baseType.exists(str => inheritance.isSubType(testType, str))
-      }
+      if (exactType) baseTypes.contains(testType)
+      else baseTypes.exists(str => inheritance.isSubType(testType, str))
     }
   }
-  
-  def matchTypeSignature(inheritance: InheritanceMap, signature: String): Boolean = {
-    if (baseType.isEmpty || baseType.exists(e => signature.contains(e))) {
+
+  def matchTypeDescriptor(inheritance: InheritanceMap, desc: String): Boolean = {
+    if (baseTypes.isEmpty || baseTypes.exists(e => desc.contains(e))) {
       true
     } else {
       // Check for subclasses as well
-      val sigTypes: Set[String] = Util.CLS_TYPE.findAllMatchIn(signature).map(m => m.group(1)).toSet
-      if (exactType) {
-        baseType.exists(b => sigTypes.contains(b))
-      } else {
-        baseType.exists(b => sigTypes.exists(sigType => inheritance.isSubType("L" + sigType + ";", b)))
-      }
+      val descTypes: Set[String] = ConfiguredTransformer.CLS_TYPE.findAllMatchIn(desc).map(m => m.group(1)).toSet
+      if (exactType) baseTypes.exists(b => descTypes.contains(b))
+      else baseTypes.exists(b => descTypes.exists(sigType => inheritance.isSubType("L" + sigType + ";", b)))
     }
   }
-  
+
   def matchBaseField(name: String): Boolean = baseMember.isEmpty || baseMember.exists {
-    case Member.Field(n) if name == n => true
+    case TransformMember.Field(n) if name == n => true
     case _ => false
   }
-  
-  def matchBaseMethod(name: String, signature: String): Boolean = {
-    val params = signature
-      .replaceAll("L[^;]*;", "L")
-      .replace("(", "")
-      .replaceAll("\\).", "")
-      .length
+
+  def matchBaseMethod(name: String, desc: String): Boolean = {
+    val params = Bytecode.simplifiedDescriptorParams(desc).length
     baseMember.isEmpty || baseMember.exists {
-      case Member.Method(n, None) if name == n => true
-      case Member.Method(n, Some(p)) if name == n && params == p => true
+      case TransformMember.Method(n, None) if name == n => true
+      case TransformMember.Method(n, Some(p)) if name == n && params == p => true
       case _ => false
     }
   }
+
+  override def toString: String = "[ " + transformer.string() + " @ " + targets.mkString("(",",",")") + " # " + baseTypes.mkString("|") + " # " + baseMember.mkString("|") + " ]"
+}
+
+object ConfiguredTransformer {
   
-  override def toString: String = "[ " + transformer.string() + " @ " + targets.mkString("(",",",")") + " # " + baseType.mkString("|") + " # " + baseMember.mkString("|") + " ]"
+  private val CLS_TYPE: Regex = "L([^;]+);".r
 }

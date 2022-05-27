@@ -1,15 +1,15 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.jstype
 
-import io.github.noeppi_noeppi.tools.sourcetransform.inheritance.InheritanceMap
-import io.github.noeppi_noeppi.tools.sourcetransform.util.cls.{ClassLocator, CompoundIndex, FakeIndex}
-import io.github.noeppi_noeppi.tools.sourcetransform.util.{ClassFailer, Util}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.cls.{ClassLocator, CompoundIndex, CompoundLocator, DecoratedIndex, FailingLocator, FakeIndex}
+import io.github.noeppi_noeppi.tools.sourcetransform.util.Util
+import io.github.noeppi_noeppi.tools.sourcetransform.util.inheritance.InheritanceIO
 import joptsimple.util.PathConverter
 import joptsimple.{OptionException, OptionParser}
 
 import java.io.File
 import java.nio.file.{Files, StandardOpenOption}
 import scala.collection.mutable
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.given
 
 object JavaScriptGenerator {
 
@@ -25,7 +25,10 @@ object JavaScriptGenerator {
     val set = try {
       options.parse(args: _*)
     } catch {
-      case e: OptionException => System.err.println("Option exception: " + e.getMessage); options.printHelpOn(System.err); Util.exit(0)
+      case e: OptionException =>
+        System.err.println("Option exception: " + e.getMessage)
+        options.printHelpOn(System.err)
+        Util.exit(0)
     }
     if (!set.has(specInheritance) || (!set.has(specClasses) && !set.has(specPackages)) || !set.has(specClasspath) || !set.has(specJs) || !set.has(specTs)) {
       if (!set.has(specInheritance)) System.out.println("Missing required option: " + specInheritance)
@@ -37,15 +40,15 @@ object JavaScriptGenerator {
       System.exit(1)
     } else {
       val inheritanceReader = Files.newBufferedReader(set.valueOf(specInheritance))
-      val inheritance = InheritanceMap.read(inheritanceReader)
+      val inheritance = InheritanceIO.read(inheritanceReader)
       inheritanceReader.close()
-      
-      val library = new CompoundIndex(Option(set.valuesOf(specClasspath)).map(_.asScala).getOrElse(Nil).map(p => ClassLocator.file(p)).toSeq: _*)
+
+      val library = new DecoratedIndex(new CompoundIndex(Option(set.valuesOf(specClasspath)).map(_.asScala).getOrElse(Nil).map(p => ClassLocator.file(p)).toSeq: _*), l => new FailingLocator(l))
       val classes = new FakeIndex(library,
         set.valuesOf(specClasses).asScala.map(_.replace('.', '/')).toList,
         set.valuesOf(specPackages).asScala.map(_.replace('.', '/')).toList
       ).allClasses
-      
+
       val classNames: Map[String, String] = classes.map(cls => (cls, if (cls.contains('/')) cls.substring(cls.lastIndexOf('/') + 1) else cls)).toMap
       val classMap: Map[String, String] = if (classNames.size != classNames.values.toSet.size) {
         System.err.println("Duplicate class names. Using fully qualified mode.")
@@ -53,7 +56,7 @@ object JavaScriptGenerator {
       } else {
         classNames
       }
-      
+
       val nulls = if (set.has(specNulls)) {
         val nullReader = Files.newBufferedReader(set.valueOf(specNulls))
         val nullLines = nullReader.lines().toArray.map(_.toString).toSet
@@ -65,26 +68,25 @@ object JavaScriptGenerator {
       } else {
         new NullChecker(Set())
       }
-      
+
       if (!Files.exists(set.valueOf(specJs).getParent)) Files.createDirectories(set.valueOf(specJs).getParent)
       if (!Files.exists(set.valueOf(specTs).getParent)) Files.createDirectories(set.valueOf(specTs).getParent)
-      
+
       val jsWriter = Files.newBufferedWriter(set.valueOf(specJs), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
       val tsWriter = Files.newBufferedWriter(set.valueOf(specTs), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
 
       val env = new JsEnv(inheritance, classes, library, classMap, tsWriter, nulls)
       jsWriter.write("var exports={};\nfunction require(arg){return" + classes.map(cls => env.plainName(cls) + ":Java.type('" + cls.replace('/', '.') + "')").mkString("{", ",", "}") + ";}\n")
       jsWriter.close()
-      
-      val failer = new ClassFailer
+
       val processedClasses = mutable.Set[String]()
-      
+
       for (cls <- classes) {
-        JsGenerator.processClass(env, cls, failer, processedClasses)
+        JsGenerator.processClass(env, cls, processedClasses)
       }
-      
+
       tsWriter.write("\n")
-      
+
       tsWriter.close()
     }
   }

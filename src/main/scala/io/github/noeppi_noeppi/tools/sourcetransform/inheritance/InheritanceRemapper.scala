@@ -1,15 +1,16 @@
 package io.github.noeppi_noeppi.tools.sourcetransform.inheritance
 
 import io.github.noeppi_noeppi.tools.sourcetransform.util.Util
+import io.github.noeppi_noeppi.tools.sourcetransform.util.inheritance.InheritanceIO
 import joptsimple.util.PathConverter
 import joptsimple.{OptionException, OptionParser}
 import net.minecraftforge.srgutils.IMappingFile
 
 import java.nio.file.{Files, StandardOpenOption}
-import scala.jdk.CollectionConverters._
+import scala.jdk.CollectionConverters.given
 
 object InheritanceRemapper {
-
+  
   def run(args: String*): Unit = {
     val options = new OptionParser(false)
     val specInput = options.acceptsAll(List("i", "input").asJava, "The inheritance map to read").withRequiredArg().withValuesConvertedBy(new PathConverter())
@@ -18,7 +19,10 @@ object InheritanceRemapper {
     val set = try {
       options.parse(args: _*)
     } catch {
-      case e: OptionException => System.err.println("Option exception: " + e.getMessage); options.printHelpOn(System.err); Util.exit(0)
+      case e: OptionException =>
+        System.err.println("Option exception: " + e.getMessage)
+        options.printHelpOn(System.err)
+        Util.exit(0)
     }
     if (!set.has(specInput) || !set.has(specMappings) || !set.has(specOutput)) {
       if (!set.has(specInput)) System.out.println("Missing required option: " + specInput)
@@ -28,7 +32,7 @@ object InheritanceRemapper {
       System.exit(1)
     } else {
       val inheritanceReader = Files.newBufferedReader(set.valueOf(specInput))
-      val inheritance = InheritanceMap.read(inheritanceReader)
+      val inheritance = InheritanceIO.read(inheritanceReader)
       inheritanceReader.close()
       
       val mappingInput = Files.newInputStream(set.valueOf(specMappings))
@@ -38,7 +42,7 @@ object InheritanceRemapper {
       val remapped = inheritance.remap(mappings)
       
       val writer = Files.newBufferedWriter(set.valueOf(specOutput), StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING)
-      remapped.write(writer)
+      InheritanceIO.write(remapped, writer)
       writer.close()
     }
   }
