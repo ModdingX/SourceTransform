@@ -128,7 +128,7 @@ object ParchmentSanitizer {
       val lambdas: Map[SourceUtil.Lambda, LambdaTarget] = lambdaBuilder.toMap
 
       val srgs: Map[String, Set[Bytecode.Method]] = if (srgMode) srgBuilder.map(entry => (entry._1, entry._2.toSet)).toMap else Map()
-      val reverseSrgs: Map[Bytecode.Method, Set[String]] = srgs.flatMap(entry => entry._2.map(m => (entry._1, m))).groupMap(_._2)(_._1).map(entry => (entry._1, entry._2.toSet))
+      val reverseSrgs: Map[Bytecode.Method, Set[String]] = Util.reverseMulti(srgs)
 
       def getRenamer(method: Bytecode.Method): ParamRenamer = {
         if (!srgMode) {
