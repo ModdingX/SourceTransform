@@ -19,7 +19,7 @@ dependencies {
     implementation 'org.scala-lang.modules:scala-parser-combinators_3:2.1.1'
     implementation 'org.apache.commons:commons-text:1.9'
     implementation 'com.google.code.gson:gson:2.9.0'
-    implementation 'net.minecraftforge:srgutils:0.4.11'
+    implementation 'net.minecraftforge:srgutils:0.4.13'
     implementation 'org.ow2.asm:asm:9.3'
     implementation 'org.ow2.asm:asm-tree:9.3'
     implementation 'org.ow2.asm:asm-util:9.3'
