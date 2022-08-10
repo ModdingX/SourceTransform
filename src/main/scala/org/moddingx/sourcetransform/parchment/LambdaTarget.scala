@@ -24,9 +24,12 @@ object LambdaTarget {
     def resolve(renameResolver: Bytecode.Method => ParamRenamer): Option[ParamRenamer] = Some(renameResolver(method))
   }
   
-  case object Keep extends LambdaTarget {
+  case class Keep(isStatic: Boolean) extends LambdaTarget {
+    
+    private val lambdaId = if (isStatic) "static" else "new"
+    
     override def lambdaName(): Option[String] = None
-    override def canMatch(lambdaMethod: String): Boolean = true
+    override def canMatch(lambdaMethod: String): Boolean = lambdaMethod.startsWith("lambda$" + lambdaId + "$")
     def resolve(renameResolver: Bytecode.Method => ParamRenamer): Option[ParamRenamer] = Some(ParamRenamer.Keep)
   }
   

@@ -2,7 +2,7 @@ package org.moddingx.sourcetransform.parchment
 
 import org.moddingx.sourcetransform.util.{Bytecode, ClassTrackingVisitor, SourceUtil}
 import org.moddingx.sourcetransform.util.inheritance.InheritanceMap
-import org.eclipse.jdt.core.dom.{AbstractTypeDeclaration, AnnotationTypeDeclaration, AnonymousClassDeclaration, BreakStatement, CompilationUnit, ContinueStatement, EnumDeclaration, FieldAccess, FieldDeclaration, IPackageBinding, ITypeBinding, IVariableBinding, ImportDeclaration, Initializer, LabeledStatement, LambdaExpression, MethodDeclaration, Name, QualifiedName, RecordDeclaration, SimpleName, SingleVariableDeclaration, SuperFieldAccess, TypeDeclaration, VariableDeclaration, VariableDeclarationExpression, VariableDeclarationFragment, VariableDeclarationStatement}
+import org.eclipse.jdt.core.dom.{AbstractTypeDeclaration, AnnotationTypeDeclaration, AnonymousClassDeclaration, BreakStatement, CompilationUnit, ContinueStatement, EnumDeclaration, FieldAccess, FieldDeclaration, IPackageBinding, ITypeBinding, IVariableBinding, ImportDeclaration, Initializer, LabeledStatement, LambdaExpression, MethodDeclaration, Modifier, Name, QualifiedName, RecordDeclaration, SimpleName, SingleVariableDeclaration, SuperFieldAccess, TypeDeclaration, VariableDeclaration, VariableDeclarationExpression, VariableDeclarationFragment, VariableDeclarationStatement}
 
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -209,7 +209,7 @@ class SourceVisitor(
   
   
   override def visit(node: FieldDeclaration): Boolean = {
-    pushLambdaTarget(LambdaTarget.Keep)
+    pushLambdaTarget(LambdaTarget.Keep(Modifier.isStatic(node.getModifiers)))
     // We want to skip variable declaration fragments from this but
     // further processing is needed to match lambdas.
     true
