@@ -30,11 +30,13 @@ object ParamIndexMapper {
   
   def lvtToIdx(access: Int, name: String, descriptor: String, lvt: Int): Option[Int] = {
     var lvtCounter = if (name != "<init>" && (access & Opcodes.ACC_STATIC) != 0) 0 else 1
+    var idxCounter = 0
     val simplified = Bytecode.simplifiedDescriptorParams(descriptor)
-    for ((simplifiedType, idx) <- simplified.zipWithIndex) {
-      if (lvtCounter == lvt) return Some(idx)
+    for (simplifiedType <- simplified if lvtCounter < lvt && idxCounter < simplified.length - 1) {
       lvtCounter += (if (simplifiedType == 'J' || simplifiedType == 'D') 2 else 1)
+      idxCounter += 1
     }
-    None
+    if (lvtCounter == lvt) Some(idxCounter)
+    else None
   }
 }

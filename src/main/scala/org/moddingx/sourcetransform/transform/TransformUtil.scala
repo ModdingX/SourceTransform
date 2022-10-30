@@ -9,19 +9,20 @@ import scala.annotation.tailrec
 
 object TransformUtil {
   
-  class AppliedTransformer private[TransformUtil] (inheritance: InheritanceMap, transformers: Seq[ConfiguredTransformer]) {
+  class AppliedTransformer private[TransformUtil] (inheritance: InheritanceMap, transformers: List[ConfiguredTransformer]) {
 
     def apply(name: String, target: TransformTarget, filter: ConfiguredTransformer => Boolean, action: String => Boolean): Option[String] = {
-      for (ct <- transformers if filter(ct)) {
-        ct.transform(name, target, inheritance) match {
-          case Some(newName) =>
-            if (action(newName)) {
-              return Some(newName)
-            }
-          case None =>
+      @tailrec
+      def applyTo(list: List[ConfiguredTransformer]): Option[String] = list match {
+        case h :: t if filter(h) => h.transform(name, target, inheritance) match {
+          case Some(newName) if action(newName) => Some(newName)
+          case _ => applyTo(t)
         }
+        case _ :: t => applyTo(t)
+        case Nil => None
       }
-      None
+      
+      applyTo(transformers)
     }
 
     def isUtilityClass(cls: String, forType: String): Boolean = {
@@ -37,7 +38,7 @@ object TransformUtil {
   }
 
   def createTransformer(inheritance: InheritanceMap, transformers: Seq[ConfiguredTransformer]): AppliedTransformer = {
-    new AppliedTransformer(inheritance, transformers)
+    new AppliedTransformer(inheritance, transformers.toList)
   }
 
   def getParamTypeForTransformerMatch(desc: String, idx: Int): String = {

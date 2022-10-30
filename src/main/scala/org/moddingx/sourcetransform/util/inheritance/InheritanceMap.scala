@@ -99,7 +99,7 @@ class InheritanceMap(private val classSet: Set[ClassInfo]) {
   def getParams(method: Bytecode.Method): Map[Int, String] = methodInfo(method).map(info => info.params).getOrElse(Map())
 
   // Whether the method is never overridden and overrides nothing.
-  def isStandalone(method: Bytecode.Method): Boolean = methodInfo(method).exists(_.overrides.nonEmpty) && !overridingMap.contains(method)
+  def isStandalone(method: Bytecode.Method): Boolean = methodInfo(method).forall(_.overrides.isEmpty) && !overridingMap.contains(method)
   
   // All methods, the given method overrides
   def getOverriddenMethods(method: Bytecode.Method): Set[Bytecode.Method] = methodInfo(method).map(_.overrides).getOrElse(Set())

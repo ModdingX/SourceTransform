@@ -2,13 +2,21 @@ package org.moddingx.sourcetransform.util.cls
 
 import org.objectweb.asm.ClassReader
 
+import scala.annotation.tailrec
+
 class CompoundLocator(parents: ClassLocator*) extends ClassLocator {
-  
+
+  private val parentList: List[ClassLocator] = parents.toList
+
   override def findClass(name: String): Option[ClassReader] = {
-    for (parent <- parents) {
-      val result = parent.findClass(name)
-      if (result.isDefined) return result
+    @tailrec
+    def findIn(list: List[ClassLocator]): Option[ClassReader] = list match {
+      case Nil => None
+      case h :: t => h.findClass(name) match {
+        case Some(cls) => Some(cls)
+        case None => findIn(t)
+      }
     }
-    None
+    findIn(parentList)
   }
 }
