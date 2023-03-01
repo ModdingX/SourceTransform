@@ -8,6 +8,13 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.jdk.CollectionConverters.given
 
+class NameScope {
+  private[this] var _failed: Boolean = false
+  val names: mutable.Set[String] = mutable.Set()
+  def failed: Boolean = _failed
+  def setFailed(): Unit = _failed = true
+}
+
 class SourceVisitor(
                      inheritance: InheritanceMap,
                      sanitizers: mutable.Map[Bytecode.Method, ParamRenamer],
@@ -20,7 +27,7 @@ class SourceVisitor(
   private val imports = mutable.Set[String]()
   
   // Each method / constructor / static init is a scope
-  private val nameScopes = mutable.Stack[mutable.Set[String]]()
+  private val nameScopes = mutable.Stack[NameScope]()
   
   // Collect renames for all static init blocks by type. Merged in endVisit
   private val staticInitRenames = mutable.Map[String, mutable.Set[ParamRenamer]]()
@@ -35,7 +42,7 @@ class SourceVisitor(
     else throw new IllegalStateException("Negative local class level.")
   }
   
-  private def pushScope(): Unit = nameScopes.push(mutable.Set())
+  private def pushScope(): Unit = nameScopes.push(new NameScope())
   private def popScope(): Unit = {
     if (nameScopes.nonEmpty) nameScopes.pop()
     else throw new IllegalStateException("Can't pop empty scope stack.")
@@ -50,10 +57,10 @@ class SourceVisitor(
   private def defineImport(name: String): Unit = imports.addOne(name)
   private def defineType(name: String): Unit = {
     if (nameScopes.isEmpty) imports.addOne(name)
-    else nameScopes.head.addOne(name)
+    else nameScopes.head.names.addOne(name)
   }
   private def defineName(name: String): Unit = {
-    if (nameScopes.nonEmpty) nameScopes.head.addOne(name)
+    if (nameScopes.nonEmpty) nameScopes.head.names.addOne(name)
     else throw new IllegalStateException("Can't define name on empty scope stack: " + name)
   }
   
@@ -69,12 +76,27 @@ class SourceVisitor(
     if (lambdaTargetStack.nonEmpty) throw new IllegalStateException("Invalid open method.")
   }
 
-  private def buildRenamer() = ParamRenamer.Default(imports.toSet | nameScopes.headOption.getOrElse(Set()), localClassLevel)
+  private def buildRenamer() = {
+    if (nameScopes.headOption.exists(_.failed)) {
+      ParamRenamer.Always(localClassLevel)
+    } else {
+      ParamRenamer.Default(imports.toSet | nameScopes.headOption.map(_.names).getOrElse(Set()), localClassLevel)
+    }
+  }
 
   private def currentLambdaTarget(): LambdaTarget = lambdaTargetStack.headOption.getOrElse(LambdaTarget.Skip)
 
   private def startType(node: AbstractTypeDeclaration): Boolean = {
-    if (node.isLocalTypeDeclaration) pushLocalClass()
+    if (node.isLocalTypeDeclaration) {
+      if (nameScopes.nonEmpty) {
+        // In some edge cases, names inside local classes incorrectly resolve bindings to parameters from the
+        // containing method while they actually reference a property from a superclass.
+        // Thus a method that contains a local class always fails to sanitize ANY parameters as we can't check
+        // which properties the superclasses have.
+        nameScopes.head.setFailed()
+      }
+      pushLocalClass()
+    }
     // Define name before push scope so it stays after the type ends
     defineType(node.getName.getIdentifier)
     true

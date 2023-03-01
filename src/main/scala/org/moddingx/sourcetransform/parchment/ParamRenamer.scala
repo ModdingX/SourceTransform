@@ -11,27 +11,29 @@ object ParamRenamer {
     def excludedNames(renamer: ParamRenamer): Set[String] = renamer match {
       case Default(excludedNames, _) => excludedNames
       case Keep => Set()
-      case Fallback => throw new IllegalArgumentException("FALLBACK param renamer has no excluded names")
+      case Always(_) => throw new IllegalArgumentException("ALWAYS param renamer has no excluded names")
     }
 
     def localClassLevel(renamer: ParamRenamer): Int = renamer match {
       case Default(_, localClassLevel) => localClassLevel
       case Keep => 0
-      case Fallback => throw new IllegalArgumentException("FALLBACK param renamer has no local class level")
+      case Always(localClassLevel) => localClassLevel
     }
     
     main match {
-      case Fallback => Fallback
-      case _ if additional.contains(Fallback) => Fallback
+      case r @ Always(_) => r
+      case _ if additional.exists(_.isInstanceOf[Always]) => Always(additional.map(localClassLevel).max)
       case _ if additional.isEmpty => main
       case Default(mainExcludedNames, localClassLevel) => Default(mainExcludedNames | additional.flatMap(excludedNames), localClassLevel)
       case Keep => Default(additional.flatMap(excludedNames), additional.map(localClassLevel).max)
     }
   }
   
+  val Fallback: ParamRenamer = Always(0)
+  
   // Treat every name as potentially used, sanitize everything
-  case object Fallback extends ParamRenamer {
-    override def rename(param: String): String = "p_" + param
+  case class Always(localClassLevel: Int) extends ParamRenamer {
+    override def rename(param: String): String = "p_" + param + ("_" * localClassLevel)
     override def withExcludedNames(names: Set[String]): ParamRenamer = this
   }
   
