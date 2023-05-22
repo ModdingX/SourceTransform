@@ -28,11 +28,13 @@ object Bytecode {
       .map(_.getInternalName)
   }
 
-  sealed abstract class Content[T <: Content[T]](val cls: String, val name: String) {
+  sealed abstract class Content[T <: Content[T]](_cls: String, _name: String) {
     def remap(mappings: IMappingFile): T
+    def cls: String = _cls
+    def name: String = _name
   }
   
-  sealed trait Member(override val cls: String, override val name: String) extends Content[?]
+  sealed trait Member(cls: String, name: String) extends Content[?]
   
   object Member {
     def unapply(member: Member): Option[(String, String)] = Some((member.cls, member.name))

@@ -15,30 +15,30 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.scala-lang:scala3-library_3:3.2.0'
-    implementation 'org.scala-lang.modules:scala-parser-combinators_3:2.1.1'
+    implementation 'org.scala-lang:scala3-library_3:3.2.2'
+    implementation 'org.scala-lang.modules:scala-parser-combinators_3:2.3.0'
     implementation 'org.apache.commons:commons-text:1.10.0'
-    implementation 'com.google.code.gson:gson:2.10'
-    implementation 'net.minecraftforge:srgutils:0.4.13'
-    implementation 'org.ow2.asm:asm:9.4'
-    implementation 'org.ow2.asm:asm-tree:9.4'
-    implementation 'org.ow2.asm:asm-util:9.4'
+    implementation 'com.google.code.gson:gson:2.10.1'
+    implementation 'net.minecraftforge:srgutils:0.5.1'
+    implementation 'org.ow2.asm:asm:9.5'
+    implementation 'org.ow2.asm:asm-tree:9.5'
+    implementation 'org.ow2.asm:asm-util:9.5'
     implementation 'net.sf.jopt-simple:jopt-simple:5.0.4'
-    implementation 'org.eclipse.jdt:org.eclipse.jdt.core:3.32.0'
+    implementation 'org.eclipse.jdt:org.eclipse.jdt.core:3.33.0'
     implementation 'org.parchmentmc:feather:1.0.0.3'
     implementation 'org.parchmentmc.feather:io-gson:1.0.0.3'
 }
 
-application.mainClassName = 'org.moddingx.sourcetransform.Main'
+application.mainClass = 'org.moddingx.sourcetransform.Main'
 
 jar {
     manifest {
-        attributes 'Main-Class': application.mainClassName
+        attributes 'Main-Class': application.mainClass.get()
     }
 }
 
 task fatjar(type: Jar) {
-    archiveClassifier = "fatjar"
+    archiveClassifier = 'fatjar'
     manifest = jar.manifest
     with jar
 }
@@ -58,7 +58,7 @@ task configureFatJar {
 fatjar.dependsOn configureFatJar
 
 task sourcesJar(type: Jar, dependsOn: classes) {
-    classifier 'sources'
+    archiveClassifier = 'sources'
     from sourceSets.main.allSource
 }
 build.dependsOn sourcesJar
