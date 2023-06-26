@@ -138,7 +138,13 @@ object ParchmentSanitizer {
           map.getOrElse(method, ParamRenamer.Fallback)
         } else {
           val allMethods: Set[Bytecode.Method] = reverseSrgs.getOrElse(method, Set()).flatMap(srg => srgs.getOrElse(srg, Set()))
-          ParamRenamer.merge(map.getOrElse(method, ParamRenamer.Fallback), allMethods.flatMap(method => map.get(method)))
+          if (allMethods.contains(LambdaTarget.LambdaMarkerForSrgUniqueMatching) && allMethods.exists(m => m != LambdaTarget.LambdaMarkerForSrgUniqueMatching)) {
+            // If lambdas and non-lambdas share the same SRG params, we must rename all parameters as we process regular
+            // methods before lambdas.
+            ParamRenamer.Fallback
+          } else {
+            ParamRenamer.merge(map.getOrElse(method, ParamRenamer.Fallback), allMethods.flatMap(method => map.get(method)))
+          }
         }
       }
 
@@ -209,7 +215,7 @@ object ParchmentSanitizer {
                 }
               }
             } else {
-              if (!set.has(specQuiet)) {
+              if (!quiet) {
                 if (sourceLambdas.isEmpty) {
                   println("Skipping lambda-like method as it has no known use as a lambda: " + method.cls + " " + method.name + method.desc)
                 } else {

@@ -220,7 +220,10 @@ class SourceVisitor(
   override def visit(node: LambdaExpression): Boolean = {
     // Don't push a scope, lambdas live in the same scope
     node.parameters().asScala.foreach {
-      case p: VariableDeclaration => defineName(p.getName.getIdentifier)
+      case p: VariableDeclaration =>
+        // Detect forge patched lambdas with SRG params
+        processSrgParam(p.getName.getIdentifier, LambdaTarget.LambdaMarkerForSrgUniqueMatching)
+        defineName(p.getName.getIdentifier)
       case p => warn("Failed to process lambda parameter: " + p)
     }
     true

@@ -11,6 +11,10 @@ sealed trait LambdaTarget {
 
 object LambdaTarget {
   
+  // Marker when collecting methods with SRG parameters, that a lambda uses that SRG.
+  // If forge patches a lambda with SRG parameters of another method somewhere, we need to rename them.
+  val LambdaMarkerForSrgUniqueMatching: Bytecode.Method = Bytecode.Method("", "lambda$", "()V")
+  
   case class Method(method: Bytecode.Method) extends LambdaTarget {
     
     private val lambdaId = method.name match {
