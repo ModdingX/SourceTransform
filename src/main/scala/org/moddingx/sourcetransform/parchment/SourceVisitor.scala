@@ -10,7 +10,8 @@ import scala.jdk.CollectionConverters.given
 
 class NameScope {
   private[this] var _failed: Boolean = false
-  val names: mutable.Set[String] = mutable.Set()
+  val names: mutable.Set[String] = mutable.Set() // Names that can't be renamed *to*
+  val from: mutable.Set[String] = mutable.Set() // Names that can't be renamed *from*
   def failed: Boolean = _failed
   def setFailed(): Unit = _failed = true
 }
@@ -23,7 +24,11 @@ class SourceVisitor(
                      quiet: Boolean
                    ) extends ClassTrackingVisitor {
   
-  private var localClassLevel = 0
+  // We can't rename parameters that appear in local or anonymous classes as they could
+  // resolve to super fields which we can't check. So every name found inside a local class
+  // (or nested local class) can't be renamed *from*.
+  private val localClassScopes = mutable.Stack[mutable.Set[String]]()
+  private def localClassLevel: Int = localClassScopes.size
   private val imports = mutable.Set[String]()
   
   // Each method / constructor / static init is a scope
@@ -36,9 +41,12 @@ class SourceVisitor(
   private val lambdaTargetStack = mutable.Stack[LambdaTarget]()
 
   
-  private def pushLocalClass(): Unit = localClassLevel += 1
-  private def popLocalClass(): Unit = {
-    if (localClassLevel > 0) localClassLevel -= 1
+  private def pushLocalClass(): Unit = {
+    val top = localClassScopes.headOption.getOrElse(Set[String]())
+    localClassScopes.push(mutable.Set.from(top))
+  }
+  private def popLocalClass(): Set[String] = {
+    if (localClassScopes.nonEmpty) localClassScopes.pop().toSet
     else throw new IllegalStateException("Negative local class level.")
   }
   
@@ -58,10 +66,12 @@ class SourceVisitor(
   private def defineType(name: String): Unit = {
     if (nameScopes.isEmpty) imports.addOne(name)
     else nameScopes.head.names.addOne(name)
+    for (scope <- localClassScopes) scope.addOne(name)
   }
   private def defineName(name: String): Unit = {
     if (nameScopes.nonEmpty) nameScopes.head.names.addOne(name)
     else throw new IllegalStateException("Can't define name on empty scope stack: " + name)
+    for (scope <- localClassScopes) scope.addOne(name)
   }
   
   
@@ -80,30 +90,24 @@ class SourceVisitor(
     if (nameScopes.headOption.exists(_.failed)) {
       ParamRenamer.Always(localClassLevel)
     } else {
-      ParamRenamer.Default(imports.toSet | nameScopes.headOption.map(_.names).getOrElse(Set()), localClassLevel)
+      ParamRenamer.Default(imports.toSet | nameScopes.headOption.map(_.names.toSet).getOrElse(Set()), nameScopes.headOption.map(_.from.toSet).getOrElse(Set()), localClassLevel)
     }
   }
 
   private def currentLambdaTarget(): LambdaTarget = lambdaTargetStack.headOption.getOrElse(LambdaTarget.Skip)
 
   private def startType(node: AbstractTypeDeclaration): Boolean = {
-    if (node.isLocalTypeDeclaration) {
-      if (nameScopes.nonEmpty) {
-        // In some edge cases, names inside local classes incorrectly resolve bindings to parameters from the
-        // containing method while they actually reference a property from a superclass.
-        // Thus a method that contains a local class always fails to sanitize ANY parameters as we can't check
-        // which properties the superclasses have.
-        nameScopes.head.setFailed()
-      }
-      pushLocalClass()
-    }
+    if (node.isLocalTypeDeclaration) pushLocalClass()
     // Define name before push scope so it stays after the type ends
     defineType(node.getName.getIdentifier)
     true
   }
 
   private def endType(node: AbstractTypeDeclaration): Unit = {
-    if (node.isLocalTypeDeclaration) popLocalClass()
+    if (node.isLocalTypeDeclaration) {
+      val namesFrom = popLocalClass()
+      if (nameScopes.nonEmpty) nameScopes.head.from.addAll(namesFrom)
+    }
   }
 
   private def processSrgParam(param: String, method: Bytecode.Method): Unit = {
@@ -133,7 +137,8 @@ class SourceVisitor(
     true
   }
   override def endVisit(node: AnonymousClassDeclaration): Unit = {
-    popLocalClass()
+    val namesFrom = popLocalClass()
+    if (nameScopes.nonEmpty) nameScopes.head.from.addAll(namesFrom)
   }
   
   

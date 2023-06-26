@@ -1,12 +1,11 @@
 package org.moddingx.sourcetransform.util.inheritance
 
-import org.moddingx.sourcetransform.util.{Bytecode, Util}
+import org.moddingx.sourcetransform.util.{Bytecode, ParamIndexMapper, Util}
 import net.minecraftforge.srgutils.{IMappingBuilder, IMappingFile}
 import org.objectweb.asm.{Opcodes, Type}
 
 import java.lang.reflect.Modifier
 import scala.collection.mutable
-
 import scala.jdk.CollectionConverters.given
 
 class InheritanceMap(private val classSet: Set[ClassInfo]) {
@@ -96,6 +95,7 @@ class InheritanceMap(private val classSet: Set[ClassInfo]) {
 
   def getImplementedLambdas(method: Bytecode.Method): Set[Bytecode.Lambda] = methodInfo(method).map(_.implementsLambdas).getOrElse(Set())
   def getParam(method: Bytecode.Method, idx: Int): Option[String] = methodInfo(method).flatMap(_.params.get(idx))
+  def getBytecodeParam(method: Bytecode.Method, bytecodeIdx: Int): Option[String] = getParam(method, ParamIndexMapper.bytecodeToIdx(method, is(method, Opcodes.ACC_STATIC), bytecodeIdx))
   def getParams(method: Bytecode.Method): Map[Int, String] = methodInfo(method).map(info => info.params).getOrElse(Map())
 
   // Whether the method is never overridden and overrides nothing.

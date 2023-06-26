@@ -7,11 +7,12 @@ import joptsimple.util.{PathConverter, PathProperties}
 import joptsimple.{OptionException, OptionParser}
 import org.eclipse.jdt.core.dom.CompilationUnit
 import org.parchmentmc.feather.io.gson.{MDCGsonAdapterFactory, NamedAdapter, OffsetDateTimeAdapter, SimpleVersionAdapter}
+import org.parchmentmc.feather.mapping.MappingDataContainer.{ClassData, MethodData, PackageData, ParameterData}
 import org.parchmentmc.feather.mapping.{MappingDataBuilder, VersionedMDCDelegate, VersionedMappingDataContainer}
 import org.parchmentmc.feather.named.Named
 import org.parchmentmc.feather.util.SimpleVersion
 
-import java.io.File
+import java.io.{File, Reader}
 import java.nio.file.{Files, StandardOpenOption}
 import java.time.OffsetDateTime
 import java.util.concurrent.{Future, ScheduledThreadPoolExecutor}
@@ -139,15 +140,15 @@ object ParchmentSanitizer {
         }
       }
 
-      val inputReader = Files.newBufferedReader(set.valueOf(specInput))
-      val input = GSON.fromJson(inputReader, classOf[VersionedMappingDataContainer])
+      val inputReader: Reader = Files.newBufferedReader(set.valueOf(specInput))
+      val input: VersionedMappingDataContainer = GSON.fromJson(inputReader, classOf[VersionedMappingDataContainer])
       inputReader.close()
 
       val output = new MappingDataBuilder
 
-      for (pkg <- input.getPackages.asScala) output.createPackage(pkg.getName).addJavadoc(pkg.getJavadoc)
+      for (pkg: PackageData <- input.getPackages.asScala) output.createPackage(pkg.getName).addJavadoc(pkg.getJavadoc)
 
-      for (cls <- input.getClasses.asScala) {
+      for (cls: ClassData <- input.getClasses.asScala) {
         val classBuilder = output.createClass(cls.getName).addJavadoc(cls.getJavadoc)
         cls.getFields.forEach(fd => classBuilder.createField(fd.getName, fd.getDescriptor).addJavadoc(fd.getJavadoc))
         
@@ -155,7 +156,7 @@ object ParchmentSanitizer {
         // Required, so lambda parameters don't conflict with method parameters
         val renamedMappers = mutable.Map[Bytecode.Method, ParamRenamer]()
         
-        for (md <- cls.getMethods.asScala) {
+        for (md: MethodData <- cls.getMethods.asScala) {
           val method = Bytecode.Method(cls.getName, md.getName, md.getDescriptor)
           // First process non-lambdas, lambdas need the results of non-lambda methods
           if (!method.name.startsWith("lambda$")) {
@@ -163,8 +164,8 @@ object ParchmentSanitizer {
             val renamedParameters = mutable.Set[String]()
             val methodBuilder = classBuilder.createMethod(md.getName, md.getDescriptor).addJavadoc(md.getJavadoc)
             
-            for (param <- md.getParameters.asScala) {
-              val newName = renamer.rename(param.getName)
+            for (param: ParameterData <- md.getParameters.asScala) {
+              val newName = renamer.rename(param.getName, inheritance.getBytecodeParam(method, param.getIndex))
               methodBuilder.createParameter(param.getIndex).setName(newName).setJavadoc(param.getJavadoc)
               renamedParameters.addOne(newName)
             }
@@ -173,7 +174,7 @@ object ParchmentSanitizer {
           }
         }
 
-        for (md <- cls.getMethods.asScala) {
+        for (md: MethodData <- cls.getMethods.asScala) {
           val method = Bytecode.Method(cls.getName, md.getName, md.getDescriptor)
           // Now to the lambdas
           if (method.name.startsWith("lambda$")) {
@@ -198,8 +199,8 @@ object ParchmentSanitizer {
                 if (!mappers.contains(ParamRenamer.Fallback)) {
                   val mergedMapper = ParamRenamer.merge(ParamRenamer.Keep, mappers.toSet)
                   val methodBuilder = classBuilder.createMethod(md.getName, md.getDescriptor).addJavadoc(md.getJavadoc)
-                  for (param <- md.getParameters.asScala) {
-                    methodBuilder.createParameter(param.getIndex).setName(mergedMapper.rename(param.getName)).setJavadoc(param.getJavadoc)
+                  for (param: ParameterData <- md.getParameters.asScala) {
+                    methodBuilder.createParameter(param.getIndex).setName(mergedMapper.rename(param.getName, inheritance.getBytecodeParam(method, param.getIndex))).setJavadoc(param.getJavadoc)
                   }
                 }
               }
