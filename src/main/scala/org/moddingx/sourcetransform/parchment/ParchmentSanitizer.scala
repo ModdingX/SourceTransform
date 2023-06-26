@@ -43,7 +43,8 @@ object ParchmentSanitizer {
     val specOutput = options.acceptsAll(List("o", "output").asJava, "Output for the sanitized parchment export.").withRequiredArg().withValuesConvertedBy(new PathConverter())
     val specQuiet = options.acceptsAll(List("q", "quiet").asJava, "Suppress warning message while reading source code.")
     val specIgnore = options.acceptsAll(List("b", "ignore").asJava, "Packages to ignore (with all subpackages).").withRequiredArg().withValuesSeparatedBy(',')
-    val specSrg = options.acceptsAll(List("srg").asJava, "Run in RSG mode: Parameters matching the pattern p_\\d+_ are considered unique. All sanitizers for methods with the same SRG parameters are merged.")
+    val specSrg = options.acceptsAll(List("srg").asJava, "Run in RSRG unique mode: Parameters matching the pattern p_\\d+_ are considered unique. All sanitizers for methods with the same SRG parameters are merged.")
+    val specInheritanceParams = options.acceptsAll(List("inheritance-params").asJava, "Load source parameter names from the inheritance map when renaming. This could be unstable but will sanitize more parameters when local and anonymous classes are involved.")
     val set = try {
       options.parse(args: _*)
     } catch {
@@ -73,6 +74,7 @@ object ParchmentSanitizer {
 
       val quiet = set.has(specQuiet)
       val srgMode = set.has(specSrg)
+      val inheritanceParamMode = set.has(specInheritanceParams)
 
       val executor = new ScheduledThreadPoolExecutor(1 max (Runtime.getRuntime.availableProcessors() - 1), (action: Runnable) => {
         val thread = new Thread(action)
@@ -165,7 +167,8 @@ object ParchmentSanitizer {
             val methodBuilder = classBuilder.createMethod(md.getName, md.getDescriptor).addJavadoc(md.getJavadoc)
             
             for (param: ParameterData <- md.getParameters.asScala) {
-              val newName = renamer.rename(param.getName, inheritance.getBytecodeParam(method, param.getIndex))
+              val sourceName: Option[String] = if inheritanceParamMode then inheritance.getBytecodeParam(method, param.getIndex) else None
+              val newName = renamer.rename(param.getName, sourceName)
               methodBuilder.createParameter(param.getIndex).setName(newName).setJavadoc(param.getJavadoc)
               renamedParameters.addOne(newName)
             }
@@ -200,7 +203,8 @@ object ParchmentSanitizer {
                   val mergedMapper = ParamRenamer.merge(ParamRenamer.Keep, mappers.toSet)
                   val methodBuilder = classBuilder.createMethod(md.getName, md.getDescriptor).addJavadoc(md.getJavadoc)
                   for (param: ParameterData <- md.getParameters.asScala) {
-                    methodBuilder.createParameter(param.getIndex).setName(mergedMapper.rename(param.getName, inheritance.getBytecodeParam(method, param.getIndex))).setJavadoc(param.getJavadoc)
+                    val sourceName: Option[String] = if inheritanceParamMode then inheritance.getBytecodeParam(method, param.getIndex) else None
+                    methodBuilder.createParameter(param.getIndex).setName(mergedMapper.rename(param.getName, sourceName)).setJavadoc(param.getJavadoc)
                   }
                 }
               }

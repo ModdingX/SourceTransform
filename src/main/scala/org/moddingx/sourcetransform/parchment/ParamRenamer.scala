@@ -1,6 +1,7 @@
 package org.moddingx.sourcetransform.parchment
 
 sealed trait ParamRenamer {
+  // source is only a Some when the inheritance-params option is set.
   def rename(param: String, source: Option[String]): String
   def withExcludedNames(names: Set[String]): ParamRenamer
 }
@@ -52,7 +53,13 @@ object ParamRenamer {
     
     override def rename(param: String, source: Option[String]): String = {
       val baseParam = (if param.endsWith("_") then param + "0" else param) + ("_" * localClassLevel)
-      if (!excludedNames.contains(baseParam) && source.isDefined && !excludedSourceNames.contains(source.get)) {
+      
+      // If no source names are excluded, we don't need to check the source name
+      val isExcludedDueToSourceName = if (excludedSourceNames.isEmpty) false else {
+        source.isEmpty || excludedSourceNames.contains(source.get)
+      }
+      
+      if (!excludedNames.contains(baseParam) && !isExcludedDueToSourceName) {
         baseParam
       } else {
         var sanitized = "p_" + baseParam
